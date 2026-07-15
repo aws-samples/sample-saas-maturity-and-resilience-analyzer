@@ -1,0 +1,373 @@
+.chat-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background-color: #ffffff;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    border: none;
+    padding: 0;
+    transition: transform 0.2s ease-in-out;
+    outline: none !important;
+}
+
+.chat-button:hover {
+    transform: scale(1.1);
+}
+
+.chat-button img {
+    width: 40px;
+    height: 40px;
+    position: relative;
+    z-index: 2;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.chat-gradient-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-image: url('/chat-gradient.svg');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    animation: rotate 2s linear infinite;
+    z-index: 1; /* Below WA logo image */
+}
+
+.chat-button.loading {
+    border: none;
+}
+
+.chat-button.loading img {
+    width: 38px;
+    height: 38px;
+}
+
+.chat-window-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Chat window animation */
+@keyframes flipIn {
+    from {
+        opacity: 0;
+        transform: perspective(1500px) rotateX(10deg) rotateY(-10deg) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: perspective(1500px) rotateX(0) rotateY(0) translateY(0);
+    }
+}
+
+@keyframes flipOut {
+    from {
+        opacity: 1;
+        transform: perspective(1500px) rotateX(0) rotateY(0) translateY(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: perspective(1500px) rotateX(10deg) rotateY(10deg) translateY(20px);
+    }
+}
+
+.chat-window-animation-container.entering {
+    animation: flipIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    transform-origin: bottom right;
+}
+
+.chat-window-animation-container.exiting {
+    animation: flipOut 0.3s ease-in forwards;
+    transform-origin: bottom right;
+}
+
+.resize-handle-corner {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize;
+    z-index: 10;
+}
+
+.resize-handle-corner::after {
+    content: "";
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 12px;
+    height: 12px;
+    border-right: 2px solid #999;
+    border-bottom: 2px solid #999;
+    opacity: 0.6;
+}
+
+.resize-handle-bottom {
+    height: 8px;
+    width: 100%;
+    bottom: 0;
+    cursor: ns-resize;
+}
+
+.resize-handle-right {
+    width: 8px;
+    height: 100%;
+    right: 0;
+    cursor: ew-resize;
+}
+
+.chat-window-controls {
+    display: flex;
+    gap: 1px;
+    align-items: center;
+    color: white;
+    background: none;
+}
+
+.chat-window-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background-color: #0f1b2a;
+    color: white;
+    cursor: move;
+}
+
+.chat-header-button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease-in-out;
+    outline: none !important;
+}
+
+.chat-header-button:hover {
+    transform: scale(1.2);
+}
+
+.chat-header-button:active {
+    transform: scale(0.95);
+}
+
+.chat-window-title {
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-window-title img {
+    width: 24px;
+    height: 24px;
+}
+
+.chat-messages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+}
+
+.chat-input-container {
+    padding: 16px;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    gap: 8px;
+    width: 95%;
+}
+
+.chat-input-container>* {
+    flex: 1 1 auto;
+    width: 95%;
+}
+
+.messages {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-block-start: 12px;
+    padding-block-end: 16px;
+    padding-inline: 16px;
+    position: relative;
+}
+
+/* Specifically target Cloudscape announcer components */
+[class*="awsui_announcer_"] {
+    z-index: 999999 !important;
+    position: fixed !important;
+}
+
+/* Target all popover-related elements */
+[class*="awsui_popover_"] {
+    z-index: 999999 !important;
+    position: fixed !important;
+}
+
+/* Target elements with aria-live attribute (used for announcements) */
+[aria-live="polite"],
+[aria-live="assertive"] {
+    z-index: 999999 !important;
+    position: fixed !important;
+}
+
+/* Target Cloudscape tooltips */
+[class*="awsui_container_"][class*="awsui_tooltip_"] {
+    z-index: 999999 !important;
+    position: fixed !important;
+}
+
+/* Custom styling for tooltips */
+[role="tooltip"] {
+    z-index: 999999 !important;
+    position: fixed !important;
+}
+
+/* Target Cloudscape status indicator */
+[class*="awsui_container_"][class*="awsui_status_"] {
+    z-index: 999999 !important;
+    position: fixed !important;
+}
+
+/* Add a lower z-index to the chat window to ensure tooltips show above */
+.react-draggable {
+    z-index: 9000 !important;
+}
+
+/* Markdown content styles */
+.markdown-content {
+    text-align: left;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+}
+
+.markdown-content p {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    padding-left: 1.5em;
+}
+
+.markdown-content code {
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 95%;
+    background-color: rgba(27, 31, 35, 0.05);
+    border-radius: 3px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.markdown-content pre {
+    padding: 16px;
+    overflow: auto;
+    font-size: 95%;
+    line-height: 1.45;
+    background-color: #f6f8fa;
+    border-radius: 3px;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.markdown-content pre code {
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+    border-radius: 0;
+}
+
+.markdown-content blockquote {
+    padding: 0 1em;
+    color: #6a737d;
+    border-left: 0.25em solid #dfe2e5;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.markdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+    padding: 6px 13px;
+    border: 1px solid #dfe2e5;
+}
+
+.markdown-content table tr {
+    background-color: #fff;
+    border-top: 1px solid #c6cbd1;
+}
+
+.markdown-content table tr:nth-child(2n) {
+    background-color: #f6f8fa;
+}
+
+.support-prompt-group-wrapper {
+    margin-inline-start: 36px;
+    margin-top: 4px;
+    width: calc(100% - 36px);
+    z-index: 9999;
+}
+
+.chat-loading-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+}

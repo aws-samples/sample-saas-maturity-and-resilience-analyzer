@@ -1,0 +1,77 @@
+[
+  {
+    "Pillar": "VPC Architecture",
+    "Question": "How do you design your VPC for high availability and fault isolation?",
+    "Best Practice": "Deploy workloads across at least three Availability Zones with dedicated public, private, and isolated subnets per AZ. Use appropriately sized CIDR blocks to allow future growth, and leverage multiple VPCs with AWS Transit Gateway for environment isolation."
+  },
+  {
+    "Pillar": "Subnet and Routing Strategy",
+    "Question": "How do you ensure routing remains resilient during AZ or component failures?",
+    "Best Practice": "Deploy NAT Gateways in each AZ to avoid cross-AZ dependency, use separate route tables per subnet tier, and configure redundant routes through AWS Transit Gateway or VPC peering for inter-VPC traffic."
+  },
+  {
+    "Pillar": "Load Balancing",
+    "Question": "How do you distribute traffic to maintain availability during instance or AZ failures?",
+    "Best Practice": "Use Application Load Balancer or Network Load Balancer with cross-zone load balancing enabled. Configure health checks with appropriate thresholds and intervals, enable connection draining, and use target group deregistration delay to allow in-flight requests to complete."
+  },
+  {
+    "Pillar": "DNS Resilience",
+    "Question": "How do you ensure DNS resolution remains available and supports failover?",
+    "Best Practice": "Use Amazon Route 53 with health checks and failover routing policies for active-passive configurations. Leverage latency-based or geolocation routing for multi-region deployments, set appropriate TTLs, and use Route 53 Resolver for hybrid DNS resolution across VPCs and on-premises networks."
+  },
+  {
+    "Pillar": "Hybrid Connectivity",
+    "Question": "How do you maintain resilient connectivity between AWS and on-premises networks?",
+    "Best Practice": "Establish redundant AWS Direct Connect connections from different locations or providers, and configure a Site-to-Site VPN as a backup path. Use BGP with multiple virtual interfaces and enable Bidirectional Forwarding Detection (BFD) for fast failover."
+  },
+  {
+    "Pillar": "Inter-Region Connectivity",
+    "Question": "How do you ensure reliable network communication across AWS Regions?",
+    "Best Practice": "Use AWS Transit Gateway inter-region peering for private, low-latency cross-region traffic. Leverage Amazon CloudFront or Global Accelerator for user-facing traffic to route through the AWS backbone, and replicate critical network configurations across regions using infrastructure-as-code."
+  },
+  {
+    "Pillar": "DDoS Protection",
+    "Question": "How do you protect your network from volumetric and application-layer DDoS attacks?",
+    "Best Practice": "Enable AWS Shield Standard on all resources and activate AWS Shield Advanced for critical workloads. Use AWS WAF with rate-based rules on ALB and CloudFront distributions, and configure Amazon CloudFront as the entry point to absorb edge-level attacks before they reach your origin."
+  },
+  {
+    "Pillar": "Network Segmentation and Security",
+    "Question": "How do you limit the blast radius of a network security incident?",
+    "Best Practice": "Apply defense-in-depth with security groups as stateful instance-level firewalls and NACLs as stateless subnet-level controls. Use AWS Network Firewall or Gateway Load Balancer with third-party appliances for centralized inspection, and enforce least-privilege rules with VPC endpoint policies."
+  },
+  {
+    "Pillar": "Service Endpoint Resilience",
+    "Question": "How do you ensure reliable access to AWS services without depending on public internet paths?",
+    "Best Practice": "Use VPC Interface Endpoints (AWS PrivateLink) and Gateway Endpoints for S3 and DynamoDB to keep traffic on the AWS network. Apply endpoint policies to restrict access, and deploy endpoints in multiple AZs to avoid single points of failure."
+  },
+  {
+    "Pillar": "Network Observability",
+    "Question": "How do you detect and diagnose network issues before they impact application availability?",
+    "Best Practice": "Enable VPC Flow Logs and send them to Amazon CloudWatch Logs or S3 for analysis. Use AWS Network Manager for centralized topology visibility, configure Amazon CloudWatch Internet Monitor for external connectivity insights, and set up Reachability Analyzer for path validation."
+  },
+  {
+    "Pillar": "Traffic Management and Throttling",
+    "Question": "How do you protect backend services from traffic spikes and cascading overload?",
+    "Best Practice": "Use Amazon API Gateway with throttling and usage plans to rate-limit inbound requests. Configure AWS WAF rate-based rules at the edge, implement connection limits on load balancers, and use queue-based decoupling with Amazon SQS to buffer bursts."
+  },
+  {
+    "Pillar": "Content Delivery and Edge Caching",
+    "Question": "How do you reduce origin load and improve availability for globally distributed users?",
+    "Best Practice": "Deploy Amazon CloudFront with origin failover groups that automatically switch to a secondary origin on error. Configure appropriate cache behaviors and TTLs, use Origin Shield to reduce origin requests, and leverage Lambda@Edge or CloudFront Functions for edge-level request handling."
+  },
+  {
+    "Pillar": "Network Automation and Infrastructure as Code",
+    "Question": "How do you ensure consistent and repeatable network configurations across environments?",
+    "Best Practice": "Define all network resources using AWS CloudFormation or Terraform with version-controlled templates. Use AWS Service Catalog for approved network patterns, automate security group and NACL audits with AWS Config rules, and test network changes in non-production environments before promotion."
+  },
+  {
+    "Pillar": "Multi-Account Network Strategy",
+    "Question": "How do you manage network resilience across a multi-account AWS organization?",
+    "Best Practice": "Centralize network connectivity through a shared networking account using AWS Transit Gateway with route tables for segmentation. Use AWS RAM to share subnets and Transit Gateway across accounts, and enforce network guardrails with AWS Organizations SCPs and AWS Network Firewall policies."
+  },
+  {
+    "Pillar": "Failover Testing and Game Days",
+    "Question": "How do you validate that your network can withstand real-world failure scenarios?",
+    "Best Practice": "Conduct regular game days simulating AZ failures, DNS failovers, and Direct Connect outages. Use AWS Fault Injection Service to inject network disruptions such as packet loss and latency in a controlled manner, and document runbooks for each failure scenario with clearly defined escalation paths."
+  }
+]

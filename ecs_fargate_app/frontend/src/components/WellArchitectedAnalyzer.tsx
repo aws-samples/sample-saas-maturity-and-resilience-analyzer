@@ -1,0 +1,1413 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { DocumentView } from './DocumentView';
+import { SpaceBetween, Container, Button, StatusIndicator, ProgressBar, Tabs, Alert, ExpandableSection, KeyValuePairs, Badge, Select, Popover, SelectProps } from '@cloudscape-design/components';
+import { FileUpload } from './FileUpload';
+import { SupportingDocumentUpload } from './SupportingDocumentUpload';
+import { WorkloadIdInput } from './WorkloadIdInput';
+import { AnalysisResults } from './AnalysisResults';
+import { RiskSummary } from './RiskSummary';
+import { useAnalyzer } from '../hooks/useAnalyzer';
+import { UploadedFile, UploadedFiles, IaCTemplateType, UpdatedDocument, WorkItem, WorkItemContent, FileUploadMode } from '../types';
+import { analyzerApi } from '../services/api';
+import { storageApi } from '../services/storage';
+import { socketService } from '../services/socket';
+import { IaCTemplateSelector } from './IaCTemplateSelector';
+import { Chat } from './chat';
+import { DomainSelector } from './DomainSelector';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getLanguageByCode, getDefaultLanguage } from '../i18n/languages';
+import { Language } from '../i18n/strings';
+
+interface DomainMetadata {
+  id: string;
+  name: string;
+  description: string;
+  pillars: string[];
+}
+
+interface ImplementationProgress {
+  status: string;
+  progress: number;
+}
+
+interface Props {
+  onWorkItemsRefreshNeeded?: () => void;
+  onAnalysisStart?: (domain: string, domainName: string) => void;
+  onCurrentLensResultsSelection?: (domain?: string, domainName?: string) => void;
+}
+
+// IDs that belong to the "Maturity Assessments" group — must match DomainSelector.tsx
+const MATURITY_ASSESSMENT_IDS = new Set(['saas_maturity_assessment']);
+
+export const WellArchitectedAnalyzer: React.FC<Props> = ({ onWorkItemsRefreshNeeded, onAnalysisStart, onCurrentLensResultsSelection }) => {
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFiles | null>(null);
+  const [updatedDocument, setUpdatedDocument] = useState<UpdatedDocument | null>(null);
+  const [workloadId, setWorkloadId] = useState<string | undefined>(undefined);
+  const [activeTabId, setActiveTabId] = useState('analysis');
+  const [selectedDomain, setSelectedDomain] = useState<string>('saas_resilience');
+  const [selectedDomainMetadata, setSelectedDomainMetadata] = useState<DomainMetadata | undefined>();
+
+  const [supportingDocument, setSupportingDocument] = useState<UploadedFile | null>(null);
+  const [supportingDocumentId, setSupportingDocumentId] = useState<string | null>(null);
+  const [supportingDocumentDescription, setSupportingDocumentDescription] = useState<string>('');
+  const { language: contextLanguage, setLanguage: setContextLanguage } = useLanguage();
+  const { strings } = useLanguage();
+
+  // Convert context language to SelectProps.Option format  
+  const [selectedLanguage, setSelectedLanguage] = useState<SelectProps.Option>(() => {
+    const langDef = getLanguageByCode(contextLanguage);
+    return {
+      value: contextLanguage,
+      label: langDef?.nativeName || 'English'
+    };
+  });
+
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isImplementing, setIsImplementing] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [implementationProgress, setImplementationProgress] = useState<ImplementationProgress | null>(null);
+  const [selectedIaCType, setSelectedIaCType] = useState<IaCTemplateType>(
+    IaCTemplateType.CLOUDFORMATION_YAML
+  );
+  const [isImageFile, setIsImageFile] = useState(false);
+  const [showCancellationAlert, setShowCancellationAlert] = useState(false);
+  const [showGenerationErrorWarning, setShowGenerationErrorWarning] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [activeWorkItem, setActiveWorkItem] = useState<WorkItem | null>(null);
+  const [currentWorkItemName, setCurrentWorkItemName] = useState<string>('');
+  const [showTokenLimitWarning, setShowTokenLimitWarning] = useState(false);
+  const [tokenCount, setTokenCount] = useState<number | null>(null);
+  const [downloadingOriginalFileId, setDownloadingOriginalFileId] = useState<string | null>(null);
+  const [downloadingSupportingDocId, setDownloadingSupportingDocId] = useState<string | null>(null);
+  const [isSupportingDocUploading, setIsSupportingDocUploading] = useState<boolean>(false);
+  const [currentWorkloadId, setCurrentWorkloadId] = useState<string | undefined>(undefined);
+  const [currentWorkloadProtected, setCurrentWorkloadProtected] = useState<boolean | undefined>(undefined);
+  const [isLoadingResults, setIsLoadingResults] = useState(false);
+  const [isNetworkInterruption, setIsNetworkInterruption] = useState(false);
+  const [isLoadingNetworkResultsButton, setIsLoadingNetworkResultsButton] = useState(false);
+  const [optionalSettingsTabId, setOptionalSettingsTabId] = useState('language-selector');
+  const [activeLensAlias] = useState<string>('saas_resilience');
+  const [activeLensAliasArn] = useState<string>('');
+
+  const {
+    analyze,
+    cancelAnalysis,
+    isCancellingAnalysis,
+    updateWorkload,
+    generateReport,
+    generateSMAReport,
+    downloadRecommendations,
+    refreshSummary,
+    deleteWorkload,
+    setError,
+    analysisResults,
+    riskSummary,
+    setRiskSummary,
+    isAnalyzing,
+    isUpdating,
+    error,
+    progress,
+    isRefreshing,
+    isGeneratingReport,
+    isDeleting,
+    canDeleteWorkload,
+    setCanDeleteWorkload,
+    createdWorkloadId,
+    setCreatedWorkloadId,
+    showAnalysisCancellationAlert,
+    setShowAnalysisCancellationAlert,
+    showPartialResultsWarning,
+    setShowPartialResultsWarning,
+    partialResultsError,
+    setAnalysisResults,
+    setPartialResultsError,
+    currentLensWorkloadId,
+    setCurrentLensWorkloadId,
+    setProgressTracking,
+    progressTracking,
+    awsRegion,
+  } = useAnalyzer();
+
+  // Check if analysis is complete and results are available
+  const isAnalysisComplete = Boolean(analysisResults && analysisResults.length > 0);
+
+  // Synchronize the language when it changes at the context level
+  useEffect(() => {
+    const langDef = getLanguageByCode(contextLanguage);
+    setSelectedLanguage({
+      value: contextLanguage,
+      label: langDef?.nativeName || 'English'
+    });
+  }, [contextLanguage]);
+
+  useEffect(() => {
+    const cleanup = socketService.onImplementationProgress((progressData: ImplementationProgress) => {
+      setImplementationProgress(progressData);
+    });
+
+    return () => {
+      cleanup();
+    };
+  }, []);
+
+  // Handle domain selection
+  const handleDomainChange = (domainId: string, domainMetadata: DomainMetadata) => {
+    setSelectedDomain(domainId);
+    setSelectedDomainMetadata(domainMetadata);
+
+    setSupportingDocumentId(null);
+    setSupportingDocument(null);
+    setSupportingDocumentDescription('');
+
+    // Switch to analysis tab
+    setActiveTabId('analysis');
+
+    // Notify parent about domain selection
+    if (onAnalysisStart) {
+      onAnalysisStart(domainId, domainMetadata.name);
+    }
+  };
+
+  const handleLoadNetworkInterruptionResults = async () => {
+    if (!activeWorkItem) return;
+
+    setIsLoadingNetworkResultsButton(true);
+    try {
+      await handleWorkItemSelect(activeWorkItem, true, selectedDomain);
+    } finally {
+      setIsLoadingNetworkResultsButton(false);
+    }
+  };
+
+  // Handle supporting document upload
+  const handleSupportingDocumentUploaded = (file: UploadedFile, description: string, fileId: string) => {
+    setSupportingDocument(file);
+    setSupportingDocumentId(fileId);
+    setSupportingDocumentDescription(description);
+
+    // If we already have an uploaded file, update the uploadedFiles object
+    if (uploadedFiles) {
+      setUploadedFiles({
+        ...uploadedFiles,
+        supportingDocument: file,
+        supportingDocumentId: fileId,
+        supportingDocumentDescription: description
+      });
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!uploadedFiles || !activeWorkItem) return;
+
+    // Reset risk summary when starting a new analysis
+    setRiskSummary(null);
+    setProgressTracking(null);
+    setIsNetworkInterruption(false);
+
+    // Switch to analysis tab
+    setActiveTabId('analysis');
+
+    try {
+      // Refresh side navigation when analysis starts
+      onWorkItemsRefreshNeeded?.();
+
+      // Use the currently selected domain
+      const currentDomain = selectedDomain;
+      const currentDomainName = selectedDomainMetadata?.name || 'Analysis Domain';
+
+      // Notify the parent App component about the domain information
+      if (onAnalysisStart) {
+        onAnalysisStart(currentDomain, currentDomainName);
+      }
+
+      setCurrentWorkItemName(`${activeWorkItem.fileName}`);
+
+      const result = await analyze(
+        activeWorkItem.fileId,
+        workloadId || currentWorkloadId,
+        selectedDomain,
+        uploadedFiles.mode,
+        supportingDocumentId,
+        supportingDocumentDescription,
+        undefined, // isTempWorkload
+        selectedLanguage.value || 'en' // Add language parameter with default
+      );
+
+      // Check if the result indicates a network interruption
+      if (result.isNetworkInterruption) {
+        setIsNetworkInterruption(true);
+      }
+
+      // Update activeWorkItem with fileId from analysis result, even for partial results
+      if (result.fileId && activeWorkItem) {
+        // If we have an existing activeWorkItem, update it
+        setActiveWorkItem({
+          ...activeWorkItem,
+          fileId: result.fileId,
+          // Initialize or update domain-specific fields 
+          supportingDocumentId: {
+            ...(activeWorkItem.supportingDocumentId || {}),
+            [currentDomain]: supportingDocumentId || undefined
+          },
+          supportingDocumentAdded: {
+            ...(activeWorkItem.supportingDocumentAdded || {}),
+            [currentDomain]: Boolean(supportingDocumentId)
+          },
+          supportingDocumentDescription: {
+            ...(activeWorkItem.supportingDocumentDescription || {}),
+            [currentDomain]: supportingDocumentDescription || undefined
+          },
+          supportingDocumentName: {
+            ...(activeWorkItem.supportingDocumentName || {}),
+            [currentDomain]: supportingDocument?.name
+          },
+          supportingDocumentType: {
+            ...(activeWorkItem.supportingDocumentType || {}),
+            [currentDomain]: supportingDocument?.type
+          },
+        });
+
+        // Clear IaC Document tab content if no IaC generation attempted for activeWorkItem
+        const domainIacStatus = activeWorkItem.iacGenerationStatus?.[currentDomain];
+        if (!isImageFile || domainIacStatus === 'NOT_STARTED' || domainIacStatus === 'FAILED' || !domainIacStatus) {
+          setUpdatedDocument(null);
+          // If currently on the IaC Document tab, switch to analysis tab
+          if (activeTabId === 'diff') {
+            setActiveTabId('analysis');
+          }
+        }
+      } else if (result.fileId) {
+        // If we don't have an activeWorkItem but have a fileId, create a new minimal WorkItem
+        setActiveWorkItem({
+          userId: '', // This will be set by the backend
+          fileId: result.fileId,
+          fileName: uploadedFiles.singleFile?.name ||
+            uploadedFiles.zipFile?.name ||
+            'Multiple files',
+          fileType: uploadedFiles.singleFile?.type ||
+            uploadedFiles.zipFile?.type ||
+            'application/multiple-files',
+          uploadDate: new Date().toISOString(),
+          s3Prefix: `${result.fileId}`,
+          lastModified: new Date().toISOString(),
+          uploadMode: uploadedFiles.mode,
+          usedLenses: [{
+            lensAlias: selectedDomain,
+            lensName: selectedDomainMetadata?.name || 'SaaS Resilience',
+            lensAliasArn: selectedDomain
+          }],
+          // Initialize domain-specific maps with the current domain
+          analysisStatus: { [currentDomain]: 'IN_PROGRESS' },
+          analysisProgress: { [currentDomain]: 0 },
+          iacGenerationStatus: { [currentDomain]: 'NOT_STARTED' },
+          iacGenerationProgress: { [currentDomain]: 0 },
+          supportingDocumentId: supportingDocumentId ? {
+            [currentDomain]: supportingDocumentId
+          } : undefined,
+          supportingDocumentAdded: supportingDocumentId ? {
+            [currentDomain]: true
+          } : undefined,
+          supportingDocumentDescription: supportingDocumentDescription ? {
+            [currentDomain]: supportingDocumentDescription
+          } : undefined,
+          supportingDocumentName: supportingDocument?.name ? {
+            [currentDomain]: supportingDocument.name
+          } : undefined,
+          supportingDocumentType: supportingDocument?.type ? {
+            [currentDomain]: supportingDocument.type
+          } : undefined,
+        });
+        setCurrentWorkItemName(`${uploadedFiles.singleFile?.name || uploadedFiles.zipFile?.name || 'Multiple files'}`);
+        if (!isImageFile) {
+          setUpdatedDocument(null);
+        }
+      }
+    } catch (err) {
+      // Handle any errors that might occur during analysis
+      console.error("Analysis failed:", err);
+      setError(err instanceof Error ? err.message : 'Analysis failed unexpectedly. Please try again.');
+    } finally {
+      // Always refresh side navigation when analysis completes or fails
+      onWorkItemsRefreshNeeded?.();
+
+      // Get the complete work item from backend
+      const loadedWorkItem = await storageApi.getWorkItem(activeWorkItem.fileId, selectedDomain);
+
+      // Only proceed if we got results
+      if (!loadedWorkItem) {
+        setError('Failed to load work item');
+        return;
+      }
+
+      // Set complete workItem loaded from backend
+      setActiveWorkItem(loadedWorkItem.workItem);
+    }
+  };
+
+  const handleUpdate = async (activeWorkItem?: any, specificWorkloadId?: string, specificDomain?: string, currentWorkloadProtected?: boolean) => {
+    // Use provided values or the current state values
+    const activeWorkloadId = specificWorkloadId || workloadId || createdWorkloadId;
+    const activeDomain = specificDomain || selectedDomain;
+
+    const isWorkloadProtected = workloadId ? true : currentWorkloadProtected;
+
+    await updateWorkload(activeWorkloadId, activeDomain, activeWorkItem, isWorkloadProtected);
+
+    // Get the complete work item from backend
+    const loadedWorkItem = await storageApi.getWorkItem(activeWorkItem.fileId, activeDomain);
+
+    // Only proceed if we got results
+    if (!loadedWorkItem) {
+      setError('Failed to load work item');
+      return;
+    }
+
+    // Set complete workItem loaded from backend
+    setActiveWorkItem(loadedWorkItem.workItem);
+  };
+
+  const handleDeleteWorkload = async (activeWorkItem?: any, activeDomain?: string) => {
+
+    await deleteWorkload(activeWorkItem, activeDomain);
+
+    // Get the complete work item from backend
+    const loadedWorkItem = await storageApi.getWorkItem(activeWorkItem.fileId, activeDomain);
+
+    // Only proceed if we got results
+    if (!loadedWorkItem) {
+      setError('Failed to load work item');
+      return;
+    }
+
+    // Set complete workItem loaded from backend
+    setActiveWorkItem(loadedWorkItem.workItem);
+  };
+
+  const handleFileUploaded = (files: UploadedFiles, fileId: string) => {
+    setUploadedFiles({
+      ...files,
+      supportingDocument: supportingDocument || undefined,
+      supportingDocumentId: supportingDocumentId || undefined,
+      supportingDocumentDescription: supportingDocumentDescription || undefined
+    });
+
+    // Set isImageFile based on file type
+    if (files.mode === FileUploadMode.SINGLE_FILE && files.singleFile) {
+      const isImage = files.singleFile.type.startsWith('image/');
+      setIsImageFile(isImage);
+    } else {
+      // Not an image for ZIP or multiple files
+      setIsImageFile(false);
+    }
+
+    // Reset current workload ID, active workItem and other states to defaults for new file uploaded
+    setActiveWorkItem(null);
+    setCurrentWorkloadId(undefined);
+    setCurrentLensWorkloadId(undefined);
+    setCanDeleteWorkload(false);
+    setRiskSummary(null);
+    setSupportingDocumentId(null);
+    setSupportingDocument(null);
+    setSupportingDocumentDescription('');
+
+    // Check if we need to show token limit warning
+    if (files.exceedsTokenLimit) {
+      setShowTokenLimitWarning(true);
+      setTokenCount(files.tokenCount || 0);
+    } else {
+      setShowTokenLimitWarning(false);
+      setTokenCount(null);
+    }
+
+    // Store the fileId for later use
+    let fileName = '';
+    let fileType = '';
+    if (files.singleFile) {
+      if (files.singleFile.type == 'application/pdf') {
+        fileName = `${files.singleFile.name}.zip`;
+        fileType = files.singleFile.type;
+      } else {
+        fileName = files.singleFile.name;
+        fileType = files.singleFile.type;
+      }
+    } else if (files.zipFile) {
+      fileName = files.zipFile.name;
+      fileType = files.zipFile.type;
+    } else if (files.multipleFiles && files.multipleFiles.length > 0) {
+      fileName = files.multipleFiles.length < 2
+        ? files.multipleFiles.map(f => f.name).join('_')
+        : `${files.multipleFiles[0].name}_and_${files.multipleFiles.length - 1}_more_files.zip`;
+      fileType = 'application/multiple-files';
+    }
+
+    setActiveWorkItem({
+      userId: '', // This will be set by the backend
+      fileId: fileId,
+      fileName: fileName,
+      fileType: fileType,
+      uploadDate: new Date().toISOString(),
+      s3Prefix: `${fileId}`,
+      lastModified: new Date().toISOString(),
+      uploadMode: files.mode,
+    });
+  };
+
+  const handleDownloadSupportingDocument = async (supportingDocId: string, fileName: string) => {
+    try {
+      if (!activeWorkItem?.fileId) {
+        setError('Cannot download supporting document: no active work item');
+        return;
+      }
+
+      setDownloadingSupportingDocId(supportingDocId);
+
+      // Pass the lens alias when downloading supporting document
+      await storageApi.downloadSupportingDocument(
+        supportingDocId,
+        activeWorkItem.fileId,
+        fileName,
+        activeLensAlias
+      );
+    } catch (error) {
+      console.error("Failed to download supporting document:", error);
+      setError(error instanceof Error ? error.message : 'Failed to download supporting document');
+    } finally {
+      setDownloadingSupportingDocId(null);
+    }
+  };
+
+  const handleGenerateReport = async (specificWorkloadId?: string, specificLensAliasArn?: string) => {
+    // Use provided values or the current state values
+    const activeWorkloadId = specificWorkloadId || workloadId || createdWorkloadId || currentWorkloadId;
+    const activeLensArn = specificLensAliasArn || activeLensAliasArn;
+    if (!activeWorkloadId) return;
+    await generateReport(activeWorkloadId, uploadedFiles?.singleFile?.name || 'unknown_file', activeLensArn);
+  };
+
+  const handleRefresh = async (specificWorkloadId?: string, specificLensAliasArn?: string) => {
+    // Use provided values or the current state values
+    const activeWorkloadId = specificWorkloadId || workloadId || createdWorkloadId || currentWorkloadId;
+    const activeLensArn = specificLensAliasArn || activeLensAliasArn;
+
+    if (!activeWorkloadId) {
+      // If no workload ID available or no previous update in the workload for this lens has been done in the past, reset the risk summary
+      setRiskSummary(null);
+      return;
+    }
+
+    // Make sure we're passing a string ID and not an object
+    let workloadIdToUse = activeWorkloadId;
+
+    // Handle case when workloadId might be an object with an id property
+    if (typeof activeWorkloadId === 'object' && activeWorkloadId !== null) {
+      workloadIdToUse = (activeWorkloadId as any).id || '';
+    }
+
+    // Call the refresh function with the workload ID and lens alias
+    if (typeof workloadIdToUse === 'string') {
+      refreshSummary(workloadIdToUse, activeLensArn);
+    } else {
+      setError('Invalid workload ID format');
+    }
+  };
+
+  const handleGenerateIacDocument = async () => {
+    if (!uploadedFiles?.singleFile || !analysisResults || !activeWorkItem) return;
+
+    try {
+      // Refresh side navigation when IaC generation starts
+      onWorkItemsRefreshNeeded?.();
+
+      setIsImplementing(true);
+      setShowGenerationErrorWarning(false);
+      setGenerationError(null);
+
+      const result = await analyzerApi.generateIacDocument(
+        activeWorkItem.fileId,
+        analysisResults,
+        selectedIaCType,
+        selectedDomain,
+        selectedLanguage.value || 'en'
+      );
+
+      // Refresh side navigation when IaC generation completes (success, failure, or cancelled)
+      onWorkItemsRefreshNeeded?.();
+
+      if (result.error) {
+        onWorkItemsRefreshNeeded?.();
+        setShowGenerationErrorWarning(true);
+        setGenerationError(result.error);
+      }
+
+      if (result.content) {
+        setUpdatedDocument({
+          content: result.content,
+          name: uploadedFiles.singleFile.name,
+          templateType: selectedIaCType
+        });
+
+        if (result.isCancelled) {
+          setShowCancellationAlert(true);
+        }
+      }
+    } catch (error) {
+      setShowGenerationErrorWarning(true);
+      setGenerationError('An unexpected error occurred during generation.');
+    } finally {
+      setIsImplementing(false);
+      setImplementationProgress(null);
+    }
+  };
+
+  const handleDownloadRecommendations = async () => {
+    try {
+      setIsDownloading(true);
+      await downloadRecommendations(
+        uploadedFiles?.singleFile?.name ||
+        uploadedFiles?.zipFile?.name ||
+        'analysis_results', activeLensAlias
+      );
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleGenerateSMAReport = async () => {
+    await generateSMAReport(
+      uploadedFiles?.singleFile?.name ||
+      uploadedFiles?.zipFile?.name ||
+      'analysis_results',
+      selectedLanguage.value || 'en'
+    );
+  };
+
+  const handleOriginalFileDownload = async (fileId: string, fileName: string) => {
+    setDownloadingOriginalFileId(fileId);
+    try {
+      await storageApi.downloadOriginalContent(fileId, fileName);
+    } catch (error) {
+      console.error('Failed to download file:', error);
+    } finally {
+      setDownloadingOriginalFileId(null);
+    }
+  };
+
+  const acceptedFileTypes = [
+    '.yaml', '.yml', '.json', '.tf',  // IaC files
+    '.png', '.jpg', '.jpeg', '.zip',   // Image and zip files
+    '.ts', '.py', '.go', '.java', '.cs'   // CDK supported programming languages files
+  ];
+
+  const formatDateTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const pad = (num: number) => String(num).padStart(2, '0');
+
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hour = pad(date.getHours());
+    const minute = pad(date.getMinutes());
+    const second = pad(date.getSeconds());
+
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  };
+
+  const handleWorkItemSelect = useCallback(async (workItem: WorkItem, loadResults?: boolean, domain?: string) => {
+    console.log('handleWorkItemSelect called with:', { workItem: workItem.fileName, loadResults, domain });
+    try {
+      // Set loading state if we're loading results
+      if (loadResults) {
+        setIsLoadingResults(true);
+      }
+
+      setProgressTracking(null);
+      setActiveWorkItem(workItem);
+
+      let currentDomain = domain || selectedDomain;
+      
+      // If no domain specified, try to find a domain with completed analysis in the work item
+      if (!domain && workItem.analysisStatus) {
+        const completedDomain = Object.keys(workItem.analysisStatus).find(
+          domainKey => workItem.analysisStatus?.[domainKey] === 'COMPLETED' || workItem.analysisStatus?.[domainKey] === 'PARTIAL'
+        );
+        if (completedDomain) {
+          currentDomain = completedDomain;
+          setSelectedDomain(completedDomain); // Update the selected domain to match
+        }
+      }
+      
+      // Reset risk summary when switching work items
+      setRiskSummary(null);
+      setCreatedWorkloadId(undefined);
+      setWorkloadId(undefined);
+
+      // Check if there's a workloadId for this domain
+      if (workItem.workloadIds && workItem.workloadIds[currentDomain]) {
+        setCurrentWorkloadId(workItem.workloadIds[currentDomain].id);
+        setCurrentWorkloadProtected(workItem.workloadIds[currentDomain].protected);
+        setCurrentLensWorkloadId(workItem.workloadIds[currentDomain].id);
+        setCanDeleteWorkload(!workItem.workloadIds[currentDomain].protected);
+
+        // After setting the current workload ID, refresh the summary
+        if (loadResults) {
+          setTimeout(() => {
+            const workloadId = workItem.workloadIds?.[currentDomain]?.id;
+            if (workloadId) {
+              handleRefresh(workloadId, currentDomain);
+            }
+          }, 100);
+          }
+        } else if (workItem.workloadIds && Object.keys(workItem.workloadIds).length > 0) {
+          // Else if - The workload in the WS Tool has never being updated for this particular lens
+          // Use the first entry in workloadIds map for workload info, regardless of which lens is active
+          const firstDomainAlias = Object.keys(workItem.workloadIds)[0];
+          const workloadInfo = workItem.workloadIds[firstDomainAlias];
+
+          setCurrentWorkloadId(workloadInfo.id);
+          setCurrentWorkloadProtected(workloadInfo.protected);
+          setCurrentLensWorkloadId(workloadInfo.id);
+          setCanDeleteWorkload(!workloadInfo.protected);
+        } else {
+          // No workloadIds for current work item. Reset currentWorkloadId and currentLensWorkloadId
+          setCurrentWorkloadId(undefined);
+          setCreatedWorkloadId(undefined);
+          setCurrentLensWorkloadId(undefined);
+          setCanDeleteWorkload(false);
+        }
+      
+
+      // Use current domain for operations
+
+      setCurrentWorkItemName(`[${formatDateTime(workItem.lastModified)}] ${workItem.fileName}`);
+
+
+      // Get the complete work item with all results
+      const result = await storageApi.getWorkItem(workItem.fileId, currentDomain);
+
+      // Only proceed if we got results
+      if (!result) {
+        setError('Failed to load work item results');
+        return;
+      }
+
+      // Set workItem loaded from backend
+      const loadedWorkItem = result.workItem;
+
+      // Notify the parent App component about the lens information
+      if (onCurrentLensResultsSelection) {
+        onCurrentLensResultsSelection(currentDomain, selectedDomainMetadata?.name || 'SaaS Resilience');
+      }
+
+      // Set image file flag
+      if (loadedWorkItem.uploadMode === FileUploadMode.SINGLE_FILE && loadedWorkItem.fileType?.startsWith('image/')) {
+        setIsImageFile(true);
+      } else {
+        setIsImageFile(false);
+      }
+
+      // Show token warning if applicable - check the token count for the current lens
+      const lensTokenCount = loadedWorkItem.tokenCount;
+      const lensExceedsTokenLimit = loadedWorkItem.exceedsTokenLimit;
+
+      if (lensExceedsTokenLimit) {
+        setShowTokenLimitWarning(true);
+        setTokenCount(lensTokenCount || 0);
+      } else {
+        setShowTokenLimitWarning(false);
+        setTokenCount(null);
+      }
+
+      // Check if IaC generation is started for this domain
+      const domainIacStatus = loadedWorkItem.iacGenerationStatus?.[currentDomain];
+      if (domainIacStatus === 'NOT_STARTED' || domainIacStatus === 'FAILED' || !domainIacStatus) {
+        setUpdatedDocument(null);
+        // If currently on the IaC Document tab, switch to analysis tab
+        if (activeTabId === 'diff') {
+          setActiveTabId('analysis');
+        }
+      }
+
+      // Check if there's a supporting document for this domain
+      if (loadedWorkItem.supportingDocumentAdded?.[currentDomain] && loadedWorkItem.supportingDocumentId?.[currentDomain]) {
+        setSupportingDocumentId(loadedWorkItem.supportingDocumentId[currentDomain] || null);
+        setSupportingDocumentDescription(loadedWorkItem.supportingDocumentDescription?.[currentDomain] || '');
+        if (loadedWorkItem.supportingDocumentName?.[currentDomain] && loadedWorkItem.supportingDocumentType?.[currentDomain]) {
+          setSupportingDocument({
+            name: loadedWorkItem.supportingDocumentName[currentDomain] || '',
+            content: '', // Not loaded, would be loaded on demand
+            type: loadedWorkItem.supportingDocumentType[currentDomain] || '',
+            size: 0 // Size unknown, not critical for display
+          });
+        }
+      } else {
+        // Reset supporting document state if none exists
+        setSupportingDocument(null);
+        setSupportingDocumentId(null);
+        setSupportingDocumentDescription('');
+      }
+
+      // Create appropriate uploadedFiles object based on loadedWorkItem.uploadMode
+      if (result.content) {
+        let fileContent: string;
+
+        // Handle different content types
+        if (typeof result.content === 'string') {
+          fileContent = result.content;
+        } else {
+          const contentObj = result.content as WorkItemContent;
+          if (loadedWorkItem.uploadMode === FileUploadMode.SINGLE_FILE && loadedWorkItem.fileType.startsWith('image/')) {
+            // For images, ensure proper base64 format
+            fileContent = contentObj.data.startsWith('data:')
+              ? contentObj.data
+              : `data:${loadedWorkItem.fileType};base64,${contentObj.data}`;
+          } else {
+            // For text content
+            fileContent = contentObj.data;
+          }
+        }
+
+        let files: UploadedFiles = {
+          mode: loadedWorkItem.uploadMode || FileUploadMode.SINGLE_FILE,
+        };
+
+        if (loadedWorkItem.uploadMode === FileUploadMode.SINGLE_FILE) {
+          files.singleFile = {
+            name: loadedWorkItem.fileName,
+            content: fileContent,
+            type: loadedWorkItem.fileType,
+            size: new Blob([fileContent]).size,
+          };
+        } else if (loadedWorkItem.uploadMode === FileUploadMode.ZIP_FILE) {
+          files.zipFile = {
+            name: loadedWorkItem.fileName,
+            content: fileContent,
+            type: loadedWorkItem.fileType,
+            size: new Blob([fileContent]).size,
+          };
+          // For work item token counts
+          files.exceedsTokenLimit = loadedWorkItem.exceedsTokenLimit;
+          files.tokenCount = loadedWorkItem.tokenCount;
+        } else {
+          files.multipleFiles = [{
+            name: loadedWorkItem.fileName,
+            content: fileContent,
+            type: loadedWorkItem.fileType,
+            size: new Blob([fileContent]).size,
+          }];
+          // For work item token counts
+          files.exceedsTokenLimit = loadedWorkItem.exceedsTokenLimit;
+          files.tokenCount = loadedWorkItem.tokenCount;
+        }
+
+        setUploadedFiles(files);
+      }
+
+      // Load analysis results if completed for this domain
+      console.log('Checking analysis results for domain:', currentDomain);
+      console.log('Analysis status:', loadedWorkItem.analysisStatus);
+      console.log('Analysis results available:', !!result.analysisResults);
+
+      if ((loadedWorkItem.analysisStatus?.[currentDomain] === 'COMPLETED' ||
+        loadedWorkItem.analysisStatus?.[currentDomain] === 'PARTIAL') &&
+        result.analysisResults) {
+        setAnalysisResults(result.analysisResults);
+        setActiveTabId('analysis');
+      }
+
+      // Load IaC document if completed for this domain
+      if ((loadedWorkItem.iacGenerationStatus?.[currentDomain] === 'COMPLETED' ||
+        loadedWorkItem.iacGenerationStatus?.[currentDomain] === 'PARTIAL') &&
+        result.iacDocument) {
+        setUpdatedDocument({
+          content: result.iacDocument,
+          name: loadedWorkItem.fileName,
+          templateType: selectedIaCType,
+        });
+        if (!result.analysisResults) {
+          setActiveTabId('diff');
+        }
+      }
+
+      // Show any errors if either process failed for this domain
+      if (loadedWorkItem.analysisError?.[currentDomain] || loadedWorkItem.iacGenerationError?.[currentDomain]) {
+        setShowPartialResultsWarning(true);
+        setPartialResultsError(
+          `Previous errors encountered: ${[
+            loadedWorkItem.analysisError?.[currentDomain],
+            loadedWorkItem.iacGenerationError?.[currentDomain],
+          ]
+            .filter(Boolean)
+            .join(', ')}`
+        );
+      }
+
+      setActiveWorkItem(loadedWorkItem);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to load work item');
+    } finally {
+      // Reset loading state when complete
+      if (loadResults) {
+        setIsLoadingResults(false);
+      }
+    }
+  }, [setActiveWorkItem, setError, setUploadedFiles, setAnalysisResults, setActiveTabId, setUpdatedDocument, selectedIaCType, setCanDeleteWorkload]);
+
+  // Effect to listen for workItemSelected events
+  useEffect(() => {
+    const handleWorkItemSelected = async (event: Event) => {
+      console.log('workItemSelected event received:', event);
+      const customEvent = event as CustomEvent<{ workItem: WorkItem, lensAliasArn?: string }>;
+      console.log('Event detail:', customEvent.detail);
+      try {
+        await handleWorkItemSelect(
+          customEvent.detail.workItem,
+          true,
+          customEvent.detail.lensAliasArn
+        );
+
+        // Dispatch loadComplete event
+        const element = document.querySelector('[data-testid="well-architected-analyzer"]');
+        if (element) {
+          element.dispatchEvent(new CustomEvent('loadComplete', { bubbles: true }));
+        }
+      } catch (error) {
+        console.error('Error handling work item selection:', error);
+        // Still dispatch loadComplete even if there's an error
+        const element = document.querySelector('[data-testid="well-architected-analyzer"]');
+        if (element) {
+          element.dispatchEvent(new CustomEvent('loadComplete', { bubbles: true }));
+        }
+      }
+    };
+
+    const element = document.querySelector('[data-testid="well-architected-analyzer"]');
+    if (element) {
+      element.addEventListener('workItemSelected', handleWorkItemSelected);
+    }
+
+    return () => {
+      if (element) {
+        element.removeEventListener('workItemSelected', handleWorkItemSelected);
+      }
+    };
+  }, [handleWorkItemSelect]);
+
+  return (
+    <SpaceBetween size="l">
+      <Container key="main-upload-container">
+        <SpaceBetween size="l">
+          <FileUpload
+            key="file-upload"
+            onFileUploaded={handleFileUploaded}
+            acceptedFileTypes={acceptedFileTypes}
+          />
+
+          <DomainSelector
+            key="domain-selector"
+            value={selectedDomain}
+            onChange={handleDomainChange}
+            disabled={isAnalyzing || isUpdating}
+          />
+
+          <ExpandableSection
+            headerText={strings.wellArchitectedAnalyzer.optionalSettings}
+            variant="inline"
+          >
+            <Tabs
+              activeTabId={optionalSettingsTabId}
+              variant="container"
+              onChange={({ detail }) => setOptionalSettingsTabId(detail.activeTabId)}
+              tabs={[
+                {
+                  id: 'language-selector',
+                  label: `${strings.wellArchitectedAnalyzer.outputLanguage}`,
+                  content: (
+                    <SpaceBetween size="l">
+                      <Select
+                        selectedOption={selectedLanguage}
+                        onChange={({ detail }) => {
+                          const langValue = detail.selectedOption.value as string;
+                          // Update local state
+                          setSelectedLanguage(detail.selectedOption);
+                          // Update context language (will propagate to the entire app)
+                          setContextLanguage(langValue as Language);
+                          // Maintain localStorage for persistence
+                          localStorage.setItem('preferredLanguage', langValue || getDefaultLanguage());
+                        }}
+                        options={useLanguage().supportedLanguages.map(lang => ({
+                          value: lang.code,
+                          label: lang.nativeName
+                        }))}
+                        ariaLabel={strings.language.select}
+                      />
+                      {selectedLanguage.value !== 'en' && (
+                        <Alert type="info">
+                          {strings.wellArchitectedAnalyzer.analysisLanguageNotice.replace('{language}', selectedLanguage.label || '日本語')}
+                        </Alert>
+                      )}
+                    </SpaceBetween>
+                  )
+                },
+                {
+                  id: 'supporting-document',
+                  label: `${strings.wellArchitectedAnalyzer.supportingDocumentUpload}`,
+                  content: (
+                    <SpaceBetween direction="vertical" size="l">
+                      <SupportingDocumentUpload
+                        onDocumentUploaded={handleSupportingDocumentUploaded}
+                        disabled={isAnalyzing || isUpdating || !uploadedFiles}
+                        onUploadStatusChange={setIsSupportingDocUploading}
+                        activeWorkItemId={activeWorkItem?.fileId}
+                        lensAliasArn={selectedDomain}
+                      />
+                    </SpaceBetween>
+                  )
+                },
+                {
+                  id: 'well-architected-tool',
+                  label: `${strings.wellArchitectedAnalyzer.wellArchitectedTool}`,
+                  content: (
+                    <SpaceBetween direction="vertical" size="l">
+                      <WorkloadIdInput
+                        value={workloadId || currentLensWorkloadId || ''}
+                        onChange={setWorkloadId}
+                        optional={true}
+                        disabled={false}
+                      />
+                    </SpaceBetween>
+                  )
+                },
+                {
+                  id: 'iac-generation',
+                  label: `${strings.wellArchitectedAnalyzer.iacGeneration}`,
+                  content: (
+                    <SpaceBetween direction="vertical" size="l">
+                      <IaCTemplateSelector
+                        value={selectedIaCType}
+                        onChange={setSelectedIaCType}
+                        disabled={isAnalyzing || isUpdating || isLoadingDetails || isImplementing}
+                      />
+                      {!isImageFile && (
+                        <Alert type="info">
+                          IaC template generation is only available when analyzing architecture diagram images.
+                        </Alert>
+                      )}
+                    </SpaceBetween>
+                  ),
+                  disabled: !isImageFile
+                }
+              ]}
+            />
+          </ExpandableSection>
+
+          {isNetworkInterruption && (
+            <Alert
+              key="network-interruption-alert"
+              type="info"
+              dismissible
+              onDismiss={() => {
+                setIsNetworkInterruption(false);
+                setError(null);
+              }}
+              header="Network Connection Interrupted"
+              action={
+                <SpaceBetween direction="horizontal" size="xs">
+                  {activeWorkItem && (
+                    <Button
+                      variant="primary"
+                      onClick={handleLoadNetworkInterruptionResults}
+                      loading={isLoadingNetworkResultsButton}
+                      disabled={isLoadingNetworkResultsButton}
+                    >
+                      Load Results
+                    </Button>
+                  )}
+                </SpaceBetween>
+              }
+            >
+              <p>Your network connection was interrupted while the analysis was running.
+                The analysis has likely completed in the background.</p>
+
+              <p><strong>You can:</strong></p>
+              <ul>
+                <li>Click "Load Results" to try loading the most recent results</li>
+                <li>Or expand your work item in the side navigation panel and click "Load results"</li>
+              </ul>
+            </Alert>
+          )}
+
+          {error && !isNetworkInterruption && (
+            <Alert
+              key="error-alert"
+              type="error"
+              dismissible
+              onDismiss={() => setError(null)}
+              header="Error"
+            >
+              {error}
+            </Alert>
+          )}
+
+          {showTokenLimitWarning && tokenCount && (
+            <Alert
+              key="token-limit-alert"
+              type="warning"
+              dismissible
+              onDismiss={() => setShowTokenLimitWarning(false)}
+              header="Token Limit Warning"
+            >
+              Your project contains approximately {tokenCount.toLocaleString()} tokens, which exceeds the recommended limit of 200,000 tokens.
+              The model invocation may fail or the analysis may lose context due to the large file size. Consider breaking your project into smaller pieces for better results.
+            </Alert>
+          )}
+
+          <SpaceBetween key="action-buttons" size="xs" direction="horizontal">
+            <Button
+              key="analyze-button"
+              variant="primary"
+              onClick={handleAnalyze}
+              loading={isAnalyzing}
+              disabled={!uploadedFiles || !selectedDomain || isSupportingDocUploading}
+              iconName="gen-ai"
+            >
+              {strings.wellArchitectedAnalyzer.startReview}
+            </Button>
+            {isAnalyzing && (
+              <Button
+                key="cancel-button"
+                onClick={cancelAnalysis}
+                iconName="close"
+                disabled={isCancellingAnalysis || !progress}
+                loading={isCancellingAnalysis}
+              >
+                {isCancellingAnalysis ? strings.wellArchitectedAnalyzer.cancelling : strings.wellArchitectedAnalyzer.cancelReview}
+              </Button>
+            )}
+          </SpaceBetween>
+        </SpaceBetween>
+      </Container>
+
+      {isAnalyzing && progress && (
+        <Container key="main-analysis-progress">
+          <SpaceBetween size="m">
+            <StatusIndicator key="analysis-progress-status" type="in-progress">
+              [{progress.processedQuestions}/{progress.totalQuestions}] Analyzing uploaded file according to:
+              '{progress.currentPillar} - {progress.currentCategory ? `${progress.currentCategory}: ` : ''}{progress.currentQuestion}'
+            </StatusIndicator>
+            <ProgressBar
+              key="analysis-progress-bar"
+              value={Math.round((progress.processedQuestions / progress.totalQuestions) * 100)}
+              description="Analysis progress"
+            />
+          </SpaceBetween>
+        </Container>
+      )}
+
+      {isImplementing && implementationProgress && (
+        <Container key="main-implementation-progress">
+          <SpaceBetween size="m">
+            <StatusIndicator key="implementation-progress-status" type="in-progress">
+              {implementationProgress.status}
+            </StatusIndicator>
+            <ProgressBar
+              key="implementation-progress-bar"
+              value={implementationProgress.progress}
+              description="IaC document generation progress"
+            />
+          </SpaceBetween>
+        </Container>
+      )}
+
+      {isLoadingDetails && implementationProgress && (
+        <Container key="main-loading-progress">
+          <SpaceBetween size="m">
+            <StatusIndicator key="loading-progress-status" type="in-progress">
+              {implementationProgress.status}
+            </StatusIndicator>
+            <ProgressBar
+              key="loading-progress-bar"
+              value={implementationProgress.progress}
+              description="Analysis progress"
+            />
+          </SpaceBetween>
+        </Container>
+      )}
+
+      {showAnalysisCancellationAlert && (
+        <Alert
+          key="main-analysis-cancellation-alert"
+          onDismiss={() => setShowAnalysisCancellationAlert(false)}
+          dismissible
+          type="warning"
+          header="Analysis cancelled"
+        >
+          The analysis of the uploaded file was cancelled. Partial results are shown below.
+          You can either use these partial results or try analyzing the complete
+          file again.
+        </Alert>
+      )}
+
+      {showCancellationAlert && (
+        <Alert
+          key="main-cancellation-alert"
+          onDismiss={() => setShowCancellationAlert(false)}
+          dismissible
+          type="warning"
+          header="Generation cancelled"
+        >
+          The IaC document generation was cancelled. A partial version has been generated
+          and can be viewed in the 'IaC Document' tab. You can either use this partial
+          version or try generating the complete document again.
+        </Alert>
+      )}
+
+      {showPartialResultsWarning && (
+        <Alert
+          key="main-partial-results-warning"
+          onDismiss={() => setShowPartialResultsWarning(false)}
+          dismissible
+          type="warning"
+          header="Partial Analysis Results"
+        >
+          {partialResultsError + ' ' || 'Analysis was interrupted. Showing partial results.'}
+          You can either use these partial results or try
+          analyzing the complete file again after waiting a few minutes.
+        </Alert>
+      )}
+
+      {showGenerationErrorWarning && (
+        <Alert
+          key="main-generation-error-warning"
+          onDismiss={() => setShowGenerationErrorWarning(false)}
+          dismissible
+          type="warning"
+          header="Partial IaC Document Generation"
+        >
+          {generationError + ' ' || 'Template generation was interrupted. Showing partial results.'}
+          You can try generating the complete document again after waiting a few minutes.
+        </Alert>
+      )}
+
+      {currentWorkItemName && (
+        <Container>
+          <KeyValuePairs
+            columns={4}
+            items={[
+              {
+                label: `${strings.wellArchitectedAnalyzer.currentWorkItem}`,
+                value: (
+                  <SpaceBetween direction="horizontal" size="xxxs" alignItems="center">
+                    {currentWorkItemName}
+                    {activeWorkItem && (
+                      <Button
+                        iconName="download"
+                        ariaLabel="Download original file"
+                        variant="inline-icon"
+                        loading={downloadingOriginalFileId === activeWorkItem.fileId}
+                        onClick={() => handleOriginalFileDownload(activeWorkItem.fileId, currentWorkItemName)}
+                      />
+                    )}
+                  </SpaceBetween>
+                )
+              },
+              {
+                label: `${MATURITY_ASSESSMENT_IDS.has(selectedDomain) ? strings.wellArchitectedAnalyzer.currentAssessment : strings.wellArchitectedAnalyzer.currentLens}`,
+                value: (
+                  <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                    {activeWorkItem && activeWorkItem.usedLenses && activeWorkItem.usedLenses.length > 0 ? (
+                      <Select
+                        selectedOption={{
+                          label: selectedDomainMetadata?.name || 'SaaS Resilience',
+                          value: selectedDomain
+                        }}
+                        onChange={({ detail }) => {
+                          if (detail.selectedOption) {
+                            const newDomain = detail.selectedOption.value as string;
+                            setSelectedDomain(newDomain);
+                            // Load results for the selected domain
+                            if (activeWorkItem) {
+                              handleWorkItemSelect(activeWorkItem, true, newDomain);
+                            }
+                          }
+                        }}
+                        options={[
+                          { label: 'SaaS Resilience', value: 'saas_resilience' },
+                          { label: 'EKS Resilience', value: 'eks_resilience' },
+                          { label: 'Serverless Resilience', value: 'serverless_resilience' },
+                          { label: 'Data Resilience', value: 'data_resilience' },
+                          { label: 'Network Resilience', value: 'network_resilience' }
+                        ]}
+                        filteringType="auto"
+                        placeholder="Select a lens"
+                        disabled={isLoadingResults}
+                      />
+                    ) : (
+                      selectedDomainMetadata?.name || 'SaaS Resilience'
+                    )}
+                  </SpaceBetween>
+                )
+              },
+              {
+                label: `${MATURITY_ASSESSMENT_IDS.has(selectedDomain) ? strings.wellArchitectedAnalyzer.currentAssessmentResultsStatus : strings.wellArchitectedAnalyzer.currentLensResultsStatus}`,
+                value: (
+                  <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                    {activeWorkItem && selectedDomain && activeWorkItem.analysisProgress &&
+                      activeWorkItem.analysisProgress[selectedDomain] !== undefined ? (
+                      <>
+                        {activeWorkItem.analysisStatus && activeWorkItem.analysisStatus[selectedDomain] === 'PARTIAL' ? (
+                          <Badge color="blue">
+                            {strings.wellArchitectedAnalyzer.partial} {activeWorkItem.analysisProgress[selectedDomain]}%
+                          </Badge>
+                        ) : activeWorkItem.analysisStatus && activeWorkItem.analysisStatus[selectedDomain] === 'IN_PROGRESS' ? (
+                          <Badge color="blue">
+                            {strings.wellArchitectedAnalyzer.inProgress} - {activeWorkItem.analysisProgress[selectedDomain]}%
+                          </Badge>
+                        ) : activeWorkItem.analysisStatus && activeWorkItem.analysisStatus[selectedDomain] === 'COMPLETED' ? (
+                          <Badge color="green">
+                            {strings.wellArchitectedAnalyzer.completed}
+                          </Badge>
+                        ) : activeWorkItem.analysisStatus && activeWorkItem.analysisStatus[selectedDomain] === 'FAILED' ? (
+                          <Badge color="red">
+                            {strings.wellArchitectedAnalyzer.failed}
+                          </Badge>
+                        ) : <Badge color="grey">Not Started</Badge>}
+                      </>
+                    ) : isAnalyzing && progressTracking ? (<ProgressBar
+                      key="current-lens-analysis-progress-bar"
+                      value={Math.round((progressTracking.processedQuestions / progressTracking.totalQuestions) * 100)}
+                      description="In progress"
+                    />) : !isAnalyzing && progressTracking ? (
+                      Math.round((progressTracking.processedQuestions / progressTracking.totalQuestions) * 100) === 100 ? (
+                        <Badge color="green">Completed</Badge>
+                      ) : (
+                        <Badge color="blue">Partial results - Stopped at {Math.round((progressTracking.processedQuestions / progressTracking.totalQuestions) * 100)}%</Badge>
+                      )
+                    ) : <Badge color="grey">Not Started</Badge>
+                    }
+                  </SpaceBetween>
+                )
+              },
+              {
+                label: `${MATURITY_ASSESSMENT_IDS.has(selectedDomain) ? strings.wellArchitectedAnalyzer.currentAssessmentSupportingDocument : strings.wellArchitectedAnalyzer.currentLensSupportingDocument}`,
+                value: supportingDocument && supportingDocumentId ? (
+                  <SpaceBetween direction="horizontal" size="xxxs" alignItems="center">
+                    {supportingDocument.name}
+                    {activeWorkItem && (
+                      <Button
+                        variant="inline-icon"
+                        iconName="download"
+                        ariaLabel={`Download ${supportingDocument.name}`}
+                        loading={downloadingSupportingDocId === supportingDocumentId}
+                        onClick={() => handleDownloadSupportingDocument(supportingDocumentId, supportingDocument.name)}
+                      />
+                    )}
+                    {activeWorkItem && (
+                      <Popover
+                        header="Supporting Document Description"
+                        dismissButton={true}
+                        position="top"
+                        triggerType="custom"
+                        content={supportingDocumentDescription}
+                      >
+                        <Button iconName="status-info" variant="icon" />
+                      </Popover>
+                    )}
+                  </SpaceBetween>
+                ) : "N/A"
+              }
+            ]}
+          />
+        </Container>
+      )}
+
+      {analysisResults && (
+        <Tabs
+          key="main-results-tabs"
+          activeTabId={activeTabId}
+          onChange={({ detail }) => {
+            setActiveTabId(detail.activeTabId);
+          }}
+          tabs={[
+            {
+              id: 'analysis',
+              label: `${strings.wellArchitectedAnalyzer.analysisResults}`,
+              content: (
+                <div key="analysis-tab-content">
+                  <AnalysisResults
+                    key="analysis-results"
+                    results={analysisResults}
+                    isAnalyzing={isAnalyzing || isLoadingResults}
+                    onDownloadRecommendations={handleDownloadRecommendations}
+                    onGenerateIacDocument={handleGenerateIacDocument}
+                    onGenerateSMAReport={handleGenerateSMAReport}
+                    isDownloading={isDownloading}
+                    isImplementing={isImplementing}
+                    isGeneratingReport={isGeneratingReport}
+                    isLoadingDetails={isLoadingDetails}
+                    setIsLoadingDetails={setIsLoadingDetails}
+                    uploadedFileType={uploadedFiles?.singleFile?.type || ''}
+                    selectedIaCType={selectedIaCType}
+                    setError={setError}
+                    fileId={activeWorkItem?.fileId || ''}
+                    fileName={uploadedFiles?.singleFile?.name || uploadedFiles?.zipFile?.name || 'unknown_file'}
+                    domain={selectedDomain}
+                    domainName={selectedDomainMetadata?.name || 'Analysis Domain'}
+                    outputLanguage={selectedLanguage.value || 'en'}
+                  />
+                </div>
+              )
+            },
+            {
+              id: 'wat',
+              label: `${strings.wellArchitectedAnalyzer.wellArchitectedTool}`,
+              disabled: isLoadingDetails || isImplementing,
+              content: (
+                <div key="wat-content">
+                  <RiskSummary
+                    key="risk-summary"
+                    summary={riskSummary}
+                    onUpdate={() => handleUpdate(activeWorkItem, currentWorkloadId, selectedDomain, currentWorkloadProtected)}
+                    onGenerateReport={() => handleGenerateReport(currentWorkloadId, selectedDomain)}
+                    onDeleteWorkload={() => handleDeleteWorkload(activeWorkItem, selectedDomain)}
+                    onRefresh={() => handleRefresh(currentWorkloadId, selectedDomain)}
+                    isUpdating={isUpdating}
+                    isRefreshing={isRefreshing || isLoadingResults}
+                    isGeneratingReport={isGeneratingReport}
+                    isDeleting={isDeleting}
+                    canDeleteWorkload={canDeleteWorkload}
+                    hasProvidedWorkloadId={!!workloadId}
+                    currentWorkloadId={currentLensWorkloadId}
+                    awsRegion={awsRegion}
+                  />
+                </div>
+              )
+            },
+            {
+              id: 'diff',
+              label: strings.wellArchitectedAnalyzer.iacDocument,
+              disabled: isLoadingDetails || isImplementing || !updatedDocument,
+              content: (
+                <div key="diff-content">
+                  {updatedDocument && (
+                    <DocumentView
+                      key="document-view"
+                      content={updatedDocument.content}
+                      fileName={updatedDocument.name}
+                      selectedIaCType={selectedIaCType}
+                      lensAlias={selectedDomain}
+                    />
+                  )}
+                </div>
+              )
+            }
+          ]}
+        />
+      )}
+      <Chat
+        isAnalysisComplete={isAnalysisComplete}
+        fileId={activeWorkItem?.fileId}
+        lensName={selectedDomainMetadata?.name || 'SaaS Resilience'}
+      />
+    </SpaceBetween>
+  );
+};

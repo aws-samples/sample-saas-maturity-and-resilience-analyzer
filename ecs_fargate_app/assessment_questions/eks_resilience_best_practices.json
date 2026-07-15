@@ -1,0 +1,77 @@
+[
+  {
+    "Pillar": "Cluster Architecture",
+    "Question": "How do you design your EKS cluster for high availability?",
+    "Best Practice": "Deploy EKS control plane across multiple Availability Zones, use managed node groups spread across at least three AZs, and configure the Kubernetes scheduler with appropriate topology spread constraints."
+  },
+  {
+    "Pillar": "Node Group Strategy",
+    "Question": "How do you ensure compute resilience for your EKS workloads?",
+    "Best Practice": "Use multiple managed node groups with diverse instance types and families, leverage Karpenter or Cluster Autoscaler for dynamic scaling, and maintain a mix of On-Demand and Spot instances with appropriate fallback strategies."
+  },
+  {
+    "Pillar": "Pod Disruption Management",
+    "Question": "How do you protect workloads during voluntary disruptions such as node upgrades or scaling events?",
+    "Best Practice": "Define Pod Disruption Budgets (PDBs) for all critical workloads, set appropriate minAvailable or maxUnavailable values, and use preStop lifecycle hooks with graceful termination periods to allow in-flight requests to complete."
+  },
+  {
+    "Pillar": "Health Checks and Self-Healing",
+    "Question": "How do you detect and recover from application-level failures?",
+    "Best Practice": "Configure liveness, readiness, and startup probes for every container with appropriate thresholds and timeouts. Use readiness gates for external dependency checks and ensure failed pods are automatically restarted or rescheduled."
+  },
+  {
+    "Pillar": "Resource Management",
+    "Question": "How do you prevent resource contention and ensure workload stability?",
+    "Best Practice": "Set resource requests and limits for all containers, use LimitRanges and ResourceQuotas per namespace, implement Vertical Pod Autoscaler for right-sizing, and use priority classes to protect critical workloads during resource pressure."
+  },
+  {
+    "Pillar": "Horizontal Scaling",
+    "Question": "How do you handle variable traffic loads on your EKS workloads?",
+    "Best Practice": "Configure Horizontal Pod Autoscaler (HPA) with appropriate CPU, memory, or custom metrics thresholds. Use KEDA for event-driven scaling and maintain minimum replica counts that can handle baseline traffic without scaling delays."
+  },
+  {
+    "Pillar": "Networking Resilience",
+    "Question": "How do you ensure reliable network communication between services?",
+    "Best Practice": "Use a service mesh like AWS App Mesh or Istio for automatic retries, circuit breaking, and traffic shifting. Configure appropriate timeouts and connection pools, and implement DNS-based service discovery with health-aware routing."
+  },
+  {
+    "Pillar": "Persistent Storage",
+    "Question": "How do you protect stateful workloads and persistent data on EKS?",
+    "Best Practice": "Use Amazon EBS CSI driver with gp3 volumes and enable volume snapshots for point-in-time recovery. For shared storage, use Amazon EFS with cross-AZ replication. Define appropriate StorageClasses with reclaimPolicy set to Retain for critical data."
+  },
+  {
+    "Pillar": "Cluster Upgrades",
+    "Question": "How do you perform EKS version upgrades with minimal disruption?",
+    "Best Practice": "Follow a blue-green or rolling upgrade strategy for node groups, test upgrades in non-production clusters first, use managed node group update strategies with maxUnavailable settings, and maintain compatibility matrices for add-ons and controllers."
+  },
+  {
+    "Pillar": "Observability and Monitoring",
+    "Question": "How do you monitor cluster and workload health to detect resilience issues early?",
+    "Best Practice": "Deploy Amazon CloudWatch Container Insights or Prometheus with Grafana for metrics collection. Set up alerts on node conditions, pod restart counts, and resource utilization. Use AWS Distro for OpenTelemetry for distributed tracing across services."
+  },
+  {
+    "Pillar": "Disaster Recovery",
+    "Question": "How do you recover your EKS workloads in the event of a regional or cluster-level failure?",
+    "Best Practice": "Maintain infrastructure-as-code definitions for all cluster resources using tools like Terraform or CloudFormation. Back up cluster state with Velero, replicate critical data to a secondary region, and regularly test recovery runbooks to validate RTO and RPO targets."
+  },
+  {
+    "Pillar": "Secrets and Configuration Management",
+    "Question": "How do you ensure resilient and secure delivery of secrets and configuration to your pods?",
+    "Best Practice": "Use AWS Secrets Manager or AWS Systems Manager Parameter Store with the Secrets Store CSI Driver for automatic secret rotation and injection. Avoid baking secrets into container images, and use Kubernetes ConfigMaps with immutable flag for stable configuration delivery."
+  },
+  {
+    "Pillar": "Service Mesh and Traffic Management",
+    "Question": "How do you implement safe deployment strategies to reduce the blast radius of faulty releases?",
+    "Best Practice": "Use canary or blue-green deployments with progressive traffic shifting via AWS App Mesh, Istio, or Argo Rollouts. Define automated rollback triggers based on error rate or latency metrics, and gate promotions on health check validations."
+  },
+  {
+    "Pillar": "Security and Access Control",
+    "Question": "How do you prevent security misconfigurations from impacting cluster resilience?",
+    "Best Practice": "Enforce least-privilege IAM roles for service accounts (IRSA), apply Kubernetes network policies to restrict pod-to-pod traffic, use Pod Security Standards to prevent privileged containers, and regularly scan images for vulnerabilities with Amazon ECR image scanning or third-party tools."
+  },
+  {
+    "Pillar": "Namespace and Multi-Tenancy Isolation",
+    "Question": "How do you isolate workloads to prevent a failure in one tenant or team from affecting others?",
+    "Best Practice": "Use dedicated namespaces per team or application with enforced ResourceQuotas and LimitRanges. Apply network policies for namespace-level traffic isolation, use node affinity or taints and tolerations to segregate workloads onto dedicated node groups, and implement OPA Gatekeeper or Kyverno for policy enforcement."
+  }
+]

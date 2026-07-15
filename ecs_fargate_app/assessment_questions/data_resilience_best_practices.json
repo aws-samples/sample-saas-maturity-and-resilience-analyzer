@@ -1,0 +1,77 @@
+[
+  {
+    "Pillar": "Backup Strategy",
+    "Question": "How do you ensure comprehensive data protection across your infrastructure?",
+    "Best Practice": "Implement a multi-tiered backup strategy following the 3-2-1 rule with redundant copies across different storage mediums and locations."
+  },
+  {
+    "Pillar": "Backup Frequency",
+    "Question": "How often are critical data sets backed up and verified?",
+    "Best Practice": "Perform incremental backups every 4-6 hours, full system backups weekly, with near real-time critical data backup and automated integrity checks."
+  },
+  {
+    "Pillar": "Data Encryption",
+    "Question": "How do you protect backup data from unauthorized access?",
+    "Best Practice": "Use strong AES-256 encryption for all backup data, with secure key management and encryption both in transit and at rest."
+  },
+  {
+    "Pillar": "Disaster Recovery",
+    "Question": "How do you prepare for potential large-scale data loss scenarios?",
+    "Best Practice": "Develop a comprehensive disaster recovery plan with clearly defined Recovery Time Objectives (RTO) and annual simulation exercises."
+  },
+  {
+    "Pillar": "Backup Verification",
+    "Question": "How do you ensure the reliability of your backup systems?",
+    "Best Practice": "Implement automated backup integrity checks with regular test restores and comprehensive logging of backup and restoration activities."
+  },
+  {
+    "Pillar": "Geographic Redundancy",
+    "Question": "How do you protect against regional failures?",
+    "Best Practice": "Store backups in geographically diverse data centers using cloud and on-premises hybrid backup solutions with minimal latency."
+  },
+  {
+    "Pillar": "Recovery Granularity",
+    "Question": "What level of data recovery capability do you maintain?",
+    "Best Practice": "Support point-in-time restoration with file-level and database-level recovery options, maintaining consistent Recovery Point Objectives (RPO)."
+  },
+  {
+    "Pillar": "Scalability",
+    "Question": "How do you manage backup infrastructure as data grows?",
+    "Best Practice": "Use elastic, cloud-native backup solutions with deduplication and compression techniques that can dynamically scale with data volume."
+  },
+  {
+    "Pillar": "Compliance Management",
+    "Question": "How do you ensure backup strategies meet regulatory requirements?",
+    "Best Practice": "Implement automated data retention policies aligned with regulatory standards and maintain detailed audit trails of backup activities."
+  },
+  {
+    "Pillar": "Access Control",
+    "Question": "How do you secure access to backup systems?",
+    "Best Practice": "Implement strict role-based access control with multi-factor authentication and comprehensive access logging for backup infrastructure."
+  },
+  {
+    "Pillar": "Performance Monitoring",
+    "Question": "How do you track and optimize backup performance?",
+    "Best Practice": "Implement real-time monitoring of backup and restore performance with automated alerting and continuous optimization."
+  },
+  {
+    "Pillar": "Version Control",
+    "Question": "How do you manage multiple backup versions?",
+    "Best Practice": "Maintain multiple backup versions with immutable storage to prevent tampering and support long-term archival strategies."
+  },
+  {
+    "Pillar": "Network Resilience",
+    "Question": "How do you ensure backup network reliability?",
+    "Best Practice": "Design backup network with redundant paths and software-defined networking for flexible and resilient data transfer."
+  },
+  {
+    "Pillar": "Storage Optimization",
+    "Question": "How do you manage backup storage costs?",
+    "Best Practice": "Implement intelligent storage tiering with automated data movement between hot and cold storage based on data criticality."
+  },
+  {
+    "Pillar": "Continuous Improvement",
+    "Question": "How do you evolve your backup strategy over time?",
+    "Best Practice": "Regularly review and update backup strategies, stay informed about emerging technologies, and conduct post-mortem analysis after recovery events."
+  }
+]
