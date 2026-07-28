@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as AdmZip from 'adm-zip';
-import { execSync } from 'child_process';
 import { ProjectFile, PackedProject } from '../interfaces/project-file.interface';
 import { Logger } from '@nestjs/common';
 
@@ -58,27 +57,37 @@ export class ProjectPacker {
      */
     private generateDirectoryTree(dirPath: string): string {
         try {
-            const excludePatternsArg = this.excludePatterns.join('|');
-            const command = `find ${dirPath} -type d -name .git -prune -o -type f -not -path "*/\\.*" | sort`;
-            const output = execSync(command, { encoding: 'utf8' });
-
-            // Process output to create a more readable tree
-            let result = '';
             const baseDir = path.basename(dirPath);
-            result += `${baseDir}\n`;
-            result += '.';
+            let result = `${baseDir}\n.`;
 
-            const lines = output.split('\n')
-                .filter(line => line.trim())
-                .map(line => line.replace(dirPath, ''));
+            const walkDir = (dir: string): string[] => {
+                const results: string[] = [];
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (entry.name.startsWith('.')) continue;
+                    const fullPath = path.join(dir, entry.name); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                    // Validate resolved path stays within dirPath
+                    const resolved = path.resolve(fullPath); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                    if (!resolved.startsWith(path.resolve(dirPath))) continue; // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                    if (entry.isDirectory()) {
+                        if (entry.name === '.git') continue;
+                        results.push(...walkDir(fullPath));
+                    } else {
+                        results.push(fullPath);
+                    }
+                }
+                return results;
+            };
 
+            const filePaths = walkDir(dirPath).sort();
             const processedLines: string[] = [];
-            lines.forEach(line => {
-                const segments = line.split('/').filter(s => s);
-                if (segments.length > 0) {
-                    let depth = 0;
-                    let lineOutput = '';
 
+            filePaths.forEach(filePath => {
+                const relativePath = path.relative(dirPath, filePath);
+                const segments = relativePath.split(path.sep);
+                if (segments.length > 0) {
+                    let lineOutput = '';
+                    let depth = 0;
                     segments.forEach((segment, index) => {
                         if (index < segments.length - 1) {
                             lineOutput += '│   '.repeat(depth) + '├── ' + segment + '\n';
@@ -88,7 +97,6 @@ export class ProjectPacker {
                         }
                         depth++;
                     });
-
                     processedLines.push(lineOutput);
                 }
             });
@@ -113,7 +121,19 @@ export class ProjectPacker {
             const entries = fs.readdirSync(currentPath);
 
             for (const entry of entries) {
-                const fullPath = path.join(currentPath, entry);
+                // Validate entry name to prevent path traversal
+                if (entry.includes('..') || entry.includes('\0')) {
+                    this.logger.warn(`Skipping suspicious entry: ${entry}`);
+                    continue;
+                }
+                const fullPath = path.join(currentPath, entry); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                // Ensure resolved path stays within the base directory
+                const resolvedFull = path.resolve(fullPath); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                const resolvedBase = path.resolve(basePath); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                if (!resolvedFull.startsWith(resolvedBase + path.sep) && resolvedFull !== resolvedBase) {
+                    this.logger.warn(`Skipping path traversal attempt: ${entry}`);
+                    continue;
+                }
                 const relativePath = path.relative(basePath, fullPath);
 
                 // Skip excluded directories
@@ -274,7 +294,15 @@ Below is the content of each file in the project:
             // Write files to temp directory
             files.forEach(file => {
                 try {
-                    const filePath = path.join(tempDir, file.filename);
+                    // Sanitize filename to prevent path traversal
+                    const sanitizedName = path.basename(file.filename);
+                    const filePath = path.join(tempDir, sanitizedName); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                    // Verify resolved path stays within temp directory
+                    const resolvedPath = path.resolve(filePath); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+                    if (!resolvedPath.startsWith(path.resolve(tempDir))) {
+                        this.logger.warn(`Skipping file with path traversal: ${file.filename}`);
+                        return;
+                    }
                     fs.writeFileSync(filePath, file.buffer);
                 } catch (error) {
                     this.logger.error(`Error writing file ${file.filename}: ${error}`);
