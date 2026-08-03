@@ -294,44 +294,47 @@ Resources:
 
   PublicSubnet:
     Type: 'AWS::EC2::Subnet'
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W33
-            reason: "Public IP required for EC2 deployer instance to access internet for CDK deployment (cloning repo, pulling images, deploying stack)."
-      guard:
-        SuppressedRules:
-          - SUBNET_AUTO_ASSIGN_PUBLIC_IP_DISABLED
-          reason: "Ephemeral deployer instance requires public IP to perform CDK deployment. Instance self-terminates after deployment."
     Properties:
       VpcId: !Ref VPC
       CidrBlock: '10.0.0.0/24'
-      MapPublicIpOnLaunch: true
+      MapPublicIpOnLaunch: false
       AvailabilityZone: !Select [0, !GetAZs '']
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-Public-Subnet'
+
+  PrivateSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.1.0/24'
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Private-Subnet'
   
   EC2SecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W5
-            reason: "Egress to 0.0.0.0/0 required for deployer to pull container images, clone git repos, and run CDK deploy."
-          - id: W40
-            reason: "All protocols allowed on egress for CDK deployment operations (HTTPS, SSH, Docker registry)."
-      guard:
-        SuppressedRules:
-          - EC2_SECURITY_GROUP_EGRESS_OPEN_TO_WORLD_RULE
-          - SECURITY_GROUP_EGRESS_ALL_PROTOCOLS_RULE
-          reason: "Ephemeral deployer instance requires unrestricted egress to clone repos, pull images, and deploy CDK stack. Instance self-terminates after deployment."
     Properties:
       GroupDescription: 'Security group for EC2 deployment instance'
       VpcId: !Ref VPC
       SecurityGroupEgress:
-        - IpProtocol: '-1'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
+          Description: 'HTTPS for git clone, npm/pip install, CDK deploy, ECR image push'
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+          Description: 'DNS resolution'
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+          Description: 'DNS resolution (TCP fallback)'
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-EC2-SG'
@@ -360,15 +363,6 @@ Resources:
   PublicRoute:
     Type: 'AWS::EC2::Route'
     DependsOn: IGWAttachment
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: W40
-            reason: "Route to IGW with 0.0.0.0/0 required for ephemeral deployer instance internet access."
-      guard:
-        SuppressedRules:
-          - NO_UNRESTRICTED_ROUTE_TO_IGW
-          reason: "Ephemeral deployer VPC requires internet access for CDK deployment. Entire VPC is deleted after deployment completes."
     Properties:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: '0.0.0.0/0'
@@ -380,20 +374,49 @@ Resources:
       SubnetId: !Ref PublicSubnet
       RouteTableId: !Ref PublicRouteTable
 
+  # NAT Gateway for private subnet outbound internet access
+  NatGatewayEIP:
+    Type: 'AWS::EC2::EIP'
+    DependsOn: IGWAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-NAT-EIP'
+
+  NatGateway:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-NAT-GW'
+
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Private-RT'
+
+  PrivateRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
   # IAM Role for EC2 Instance
   EC2Role:
     Type: 'AWS::IAM::Role'
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: F9
-            reason: "AdministratorAccess required because the deployer runs CDK deploy which creates IAM roles, VPCs, ECS clusters, Bedrock KBs, OpenSearch collections, and other resources requiring broad permissions."
-          - id: F38
-            reason: "Same as above - CDK deploy requires full administrative access to create the solution stack."
-      guard:
-        SuppressedRules:
-          - IAM_ROLE_ADMINISTRATOR_ACCESS_POLICY_RULE
-          reason: "CDK deploy creates 100+ resources across multiple services (IAM, ECS, OpenSearch, Bedrock, VPC, S3, DynamoDB). Scoping to individual permissions is impractical. Instance self-terminates after deployment."
     Properties:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -402,8 +425,20 @@ Resources:
             Principal:
               Service: ec2.amazonaws.com
             Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CdkDeployAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AssumeCdkRoles
+                Effect: Allow
+                Action: 'sts:AssumeRole'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/cdk-hnb659fds-*-${AWS::AccountId}-${AWS::Region}'
+              - Sid: ReadBootstrapVersion
+                Effect: Allow
+                Action: 'ssm:GetParameter'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cdk-bootstrap/hnb659fds/version'
       ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/AdministratorAccess'
         - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
       Tags:
         - Key: Name
@@ -760,7 +795,7 @@ Resources:
       # Direct reference to the latest Amazon Linux 2023 AMI through SSM parameter
       ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
       IamInstanceProfile: !Ref EC2InstanceProfile
-      SubnetId: !Ref PublicSubnet
+      SubnetId: !Ref PrivateSubnet
       SecurityGroupIds:
         - !GetAtt EC2SecurityGroup.GroupId
       BlockDeviceMappings:
