@@ -20,6 +20,7 @@ import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { createHash } from 'crypto';
 import { WorkItem } from '../../shared/interfaces/storage.interface';
 import { FileUploadMode } from '../../shared/dto/analysis.dto';
+import { GetWorkItemDto, StoreChatHistoryDto } from '../../shared/dto/request-validation.dto';
 
 @Controller('storage')
 export class StorageController {
@@ -338,7 +339,7 @@ export class StorageController {
 
     @Post('work-items/get')
     async getWorkItem(
-        @Body() body: { fileId: string; lensAliasArn?: string },
+        @Body() body: GetWorkItemDto,
         @Headers('x-amzn-oidc-data') userDataHeader: string,
     ): Promise<{
         workItem: WorkItem;
@@ -701,7 +702,7 @@ export class StorageController {
     @Post('work-items/:fileId/chat-history')
     async storeChatHistory(
         @Param('fileId') fileId: string,
-        @Body() body: { messages: any[] },
+        @Body() body: StoreChatHistoryDto,
         @Headers('x-amzn-oidc-data') userDataHeader: string,
     ) {
         try {

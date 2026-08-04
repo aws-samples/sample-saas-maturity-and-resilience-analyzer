@@ -11,8 +11,8 @@ async function bootstrap() {
   });
 
   // Increase payload size limit and disable timeout
-  app.use(bodyParser.json({ limit: '100mb' }));
-  app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
   // Set a longer timeout for HTTP requests (25 minutes — SMA analysis with 16 questions can take ~17 min)
   app.use((req: Request, res: Response, next: NextFunction) => {

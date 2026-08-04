@@ -43,8 +43,40 @@ export class ProjectPacker {
     private async unzipBuffer(buffer: Buffer): Promise<string> {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'project-'));
         const zip = new AdmZip(buffer);
+        const resolvedTempDir = path.resolve(tempDir);
 
-        // Extract all files
+        // Check decompression ratio to prevent zip bombs
+        const MAX_DECOMPRESSION_RATIO = 100; // reject if uncompressed > 100x compressed
+        const MAX_UNCOMPRESSED_SIZE = 500 * 1024 * 1024; // 500MB max uncompressed
+        const entries = zip.getEntries();
+        let totalUncompressedSize = 0;
+
+        for (const entry of entries) {
+            totalUncompressedSize += entry.header.size;
+
+            // Validate ZIP entry paths to prevent path traversal (Zip Slip)
+            const entryPath = path.join(tempDir, entry.entryName);
+            const resolvedEntryPath = path.resolve(entryPath);
+            if (!resolvedEntryPath.startsWith(resolvedTempDir + path.sep) && resolvedEntryPath !== resolvedTempDir) {
+                this.logger.warn(`Blocked path traversal attempt in ZIP entry: ${entry.entryName}`);
+                throw new Error(`Invalid ZIP entry path: ${entry.entryName}`);
+            }
+        }
+
+        // Check absolute size limit
+        if (totalUncompressedSize > MAX_UNCOMPRESSED_SIZE) {
+            this.logger.warn(`ZIP bomb detected: uncompressed size ${totalUncompressedSize} exceeds ${MAX_UNCOMPRESSED_SIZE} bytes`);
+            throw new Error('ZIP file uncompressed size exceeds maximum allowed (500MB)');
+        }
+
+        // Check compression ratio
+        const compressionRatio = totalUncompressedSize / buffer.length;
+        if (compressionRatio > MAX_DECOMPRESSION_RATIO) {
+            this.logger.warn(`ZIP bomb detected: decompression ratio ${compressionRatio.toFixed(1)}x exceeds limit of ${MAX_DECOMPRESSION_RATIO}x`);
+            throw new Error(`ZIP file compression ratio (${compressionRatio.toFixed(0)}x) exceeds safe limit`);
+        }
+
+        // Safe to extract after validation
         zip.extractAllTo(tempDir, true);
 
         return tempDir;

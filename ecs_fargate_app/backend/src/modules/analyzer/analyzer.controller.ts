@@ -10,6 +10,7 @@ import {
 import { AnalyzerService } from './analyzer.service';
 import { StorageService } from '../storage/storage.service';
 import { AnalyzeRequestDto, IaCTemplateType } from '../../shared/dto/analysis.dto';
+import { GenerateIacDto, GetMoreDetailsDto, ChatRequestDto } from '../../shared/dto/request-validation.dto';
 import { ConfigService } from '@nestjs/config';
 
 @Controller('analyzer')
@@ -118,13 +119,7 @@ export class AnalyzerController {
 
   @Post('generate-iac')
   async generateIacDocument(
-    @Body() body: {
-      fileId: string;
-      recommendations: any[];
-      templateType: IaCTemplateType;
-      domain?: string;
-      outputLanguage?: string;
-    },
+    @Body() body: GenerateIacDto,
     @Headers('x-amzn-oidc-data') userDataHeader: string,
   ) {
     try {
@@ -134,7 +129,7 @@ export class AnalyzerController {
       const result = await this.analyzerService.generateIacDocument(
         body.fileId,
         body.recommendations,
-        body.templateType,
+        body.templateType as IaCTemplateType,
         userId,
         body.domain,
         body.outputLanguage
@@ -152,13 +147,7 @@ export class AnalyzerController {
   }
 
   @Post('get-more-details')
-  async getMoreDetails(@Body() body: {
-    selectedItems: any[];
-    fileId: string;
-    templateType?: IaCTemplateType;
-    domain?: string;
-    outputLanguage?: string;
-  },
+  async getMoreDetails(@Body() body: GetMoreDetailsDto,
     @Headers('x-amzn-oidc-data') userDataHeader: string,) {
     try {
       const email = this.getUserEmail(userDataHeader);
@@ -168,7 +157,7 @@ export class AnalyzerController {
         body.selectedItems,
         userId,
         body.fileId,
-        body.templateType,
+        body.templateType as IaCTemplateType,
         body.domain,
         body.outputLanguage
       );
@@ -204,7 +193,7 @@ export class AnalyzerController {
 
   @Post('chat')
   async chat(
-    @Body() body: { fileId: string; message: string, domain?: string },
+    @Body() body: ChatRequestDto,
     @Headers('x-amzn-oidc-data') userDataHeader: string,
   ) {
     try {

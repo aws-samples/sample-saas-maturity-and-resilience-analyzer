@@ -8,6 +8,7 @@ import {
   } from '@nestjs/common';
   import { ReportService } from './report.service';
   import { GenerateReportDto } from '../../shared/dto/analysis.dto';
+  import { GenerateSMAReportDto } from '../../shared/dto/request-validation.dto';
   
   @Controller('report')
   export class ReportController {
@@ -55,7 +56,7 @@ import {
     }
 
     @Post('sma-report')
-    async generateSMAReport(@Body() body: { results: any[]; fileName?: string; outputLanguage?: string }) {
+    async generateSMAReport(@Body() body: GenerateSMAReportDto) {
       try {
         const pdfBuffer = await this.reportService.generateSMAReport(
           body.results,

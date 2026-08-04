@@ -9,6 +9,7 @@ import {
   HttpStatus,
   Logger
 } from '@nestjs/common';
+import { RiskSummaryDto, UpdateAnswerDto, AssociateLensDto, CreateWorkloadDto } from '../../shared/dto/request-validation.dto';
 import { WellArchitectedService } from './well-architected.service';
 import { CreateMilestoneDto } from '../../shared/dto/analysis.dto';
 
@@ -45,7 +46,7 @@ export class WellArchitectedController {
   }
 
   @Post('risk-summary')
-  async getRiskSummary(@Body() body: { workloadId: string; lensAliasArn?: string }) {
+  async getRiskSummary(@Body() body: RiskSummaryDto) {
     try {
       const { workloadId, lensAliasArn } = body;
       return await this.waService.getRiskSummary(workloadId, lensAliasArn);
@@ -77,13 +78,7 @@ export class WellArchitectedController {
   @Post('answer/:workloadId')
   async updateAnswer(
     @Param('workloadId') workloadId: string,
-    @Body() body: {
-      questionId: string;
-      selectedChoices: string[];
-      notApplicableChoices?: string[];
-      notSelectedChoices: string[];
-      lensAliasArn?: string;
-    }
+    @Body() body: UpdateAnswerDto
   ) {
     try {
       return await this.waService.updateAnswer(
@@ -106,7 +101,7 @@ export class WellArchitectedController {
   @Post('associate-lens/:workloadId')
   async associateLens(
     @Param('workloadId') workloadId: string,
-    @Body() body: { lensAliasArn: string }
+    @Body() body: AssociateLensDto
   ) {
     try {
       await this.waService.associateLens(workloadId, body.lensAliasArn);
@@ -121,7 +116,7 @@ export class WellArchitectedController {
   }
 
   @Post('workload/create')
-  async createWorkload(@Body() body: { isTemp: boolean, lensAliasArn?: string }) {
+  async createWorkload(@Body() body: CreateWorkloadDto) {
     try {
       return await this.waService.createWorkload(body.isTemp, body.lensAliasArn);
     } catch (error) {

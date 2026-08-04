@@ -518,13 +518,8 @@ class ResilienceAnalyzerStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
             enforce_ssl=True,
-            cors=[
-                s3.CorsRule(
-                    allowed_methods=[s3.HttpMethods.GET, s3.HttpMethods.PUT],
-                    allowed_origins=["*"],
-                    allowed_headers=["*"],
-                )
-            ],
+            # CORS is configured after the ALB is created (see below)
+            # to restrict allowed_origins to the deployed frontend domain.
         )
 
         # Create DynamoDB table for metadata
@@ -704,15 +699,24 @@ class ResilienceAnalyzerStack(Stack):
                     "wellarchitected:AssociateLenses",
                     "wellarchitected:DisassociateLenses",
                 ],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:wellarchitected:{self.region}:{self.account}:workload/*"
+                ],
             )
         )
 
         # Grant Lambda access to the lens metadata table
         lens_metadata_table.grant_read_write_data(kb_lambda_synchronizer)
 
-        # Grant Lambda access to the WA docs bucket
-        wafrReferenceDocsBucket.grant_put(kb_lambda_synchronizer)
+        # Grant Lambda PutObject-only access to the WA docs bucket (least-privilege)
+        kb_lambda_synchronizer.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["s3:PutObject"],
+                resources=[
+                    f"{wafrReferenceDocsBucket.bucket_arn}/*",
+                ],
+            )
+        )
 
         # Create EventBridge rule to trigger KbLambdaSynchronizer weekly on Mondays
         events.Rule(
@@ -818,19 +822,24 @@ class ResilienceAnalyzerStack(Stack):
             )
         )
         app_execute_role.add_to_policy(
-            iam.PolicyStatement(actions=["bedrock:InvokeModel"], resources=["*"])
-        )
-        app_execute_role.add_to_policy(
             iam.PolicyStatement(
-                actions=["s3:GetObject", "s3:ListBucket"],
+                actions=["bedrock:InvokeModel"],
                 resources=[
-                    f"arn:aws:s3:::{WA_DOCS_BUCKET_NAME}",
-                    f"arn:aws:s3:::{WA_DOCS_BUCKET_NAME}/*",
+                    f"arn:aws:bedrock:{self.region}::foundation-model/*",
+                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
                 ],
             )
         )
-        app_execute_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonBedrockFullAccess")
+        app_execute_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:Retrieve",
+                    "bedrock:RetrieveAndGenerate",
+                ],
+                resources=[
+                    f"arn:aws:bedrock:{self.region}:{self.account}:knowledge-base/{KB_ID}"
+                ],
+            )
         )
 
         # Adding DDB and S3 data store bucket permission for app_execute_role
@@ -1181,6 +1190,25 @@ class ResilienceAnalyzerStack(Stack):
 
         # Get the ALB DNS name after frontend service is created
         alb_dns = frontend_service.load_balancer.load_balancer_dns_name
+
+        # Configure S3 CORS to restrict origins to the deployed ALB domain only
+        # (instead of wildcard '*' which would allow cross-origin access from any site)
+        cfn_bucket = analysis_storage_bucket.node.default_child
+        cfn_bucket.add_property_override(
+            "CorsConfiguration",
+            {
+                "CorsRules": [
+                    {
+                        "AllowedMethods": ["GET", "PUT"],
+                        "AllowedOrigins": [
+                            cdk.Fn.sub("http://${AlbDns}", {"AlbDns": alb_dns}),
+                            cdk.Fn.sub("https://${AlbDns}", {"AlbDns": alb_dns}),
+                        ],
+                        "AllowedHeaders": ["*"],
+                    }
+                ]
+            },
+        )
 
         # Configure health check for ALB
         frontend_service.target_group.configure_health_check(path="/healthz")
