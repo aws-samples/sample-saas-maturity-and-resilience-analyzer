@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AwsConfigService } from '../../config/aws.config';
 import {
   GetLensReviewCommand,
+  GetWorkloadCommand,
   paginateListAnswers,
   UpdateAnswerCommand,
   CreateMilestoneCommand,
@@ -317,6 +318,23 @@ export class WellArchitectedService {
 
   async deleteWorkload(workloadId: string): Promise<void> {
     const waClient = this.awsConfig.createWAClient();
+
+    // Verify the workload belongs to this application before deletion
+    try {
+      const getCommand = new GetWorkloadCommand({ WorkloadId: workloadId });
+      const workload = await waClient.send(getCommand);
+      const workloadName = workload.Workload?.WorkloadName || '';
+      if (!workloadName.startsWith('IaCAnalyzer_') && !workloadName.startsWith('DO_NOT_DELETE_temp_IaCAnalyzer_')) {
+        throw new Error('Cannot delete workload not created by this application');
+      }
+    } catch (error) {
+      if (error.message === 'Cannot delete workload not created by this application') {
+        throw error;
+      }
+      this.logger.error(`Error verifying workload ownership: ${error}`);
+      throw new Error('Failed to verify workload ownership before deletion');
+    }
+
     const command = new DeleteWorkloadCommand({
       WorkloadId: workloadId,
       ClientRequestToken: randomUUID()
@@ -347,8 +365,14 @@ export class WellArchitectedService {
         }
       }
 
+      // Filter to only workloads created by this application
+      const appWorkloads = allWorkloads.filter(w =>
+        w.WorkloadName?.startsWith('IaCAnalyzer_') ||
+        w.WorkloadName?.startsWith('DO_NOT_DELETE_temp_IaCAnalyzer_')
+      );
+
       // Sort workloads by name for better user experience
-      return allWorkloads.sort((a, b) => {
+      return appWorkloads.sort((a, b) => {
         if (a.WorkloadName && b.WorkloadName) {
           return a.WorkloadName.localeCompare(b.WorkloadName);
         }

@@ -20,7 +20,7 @@ import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { createHash } from 'crypto';
 import { WorkItem } from '../../shared/interfaces/storage.interface';
 import { FileUploadMode } from '../../shared/dto/analysis.dto';
-import { GetWorkItemDto, StoreChatHistoryDto } from '../../shared/dto/request-validation.dto';
+import { GetWorkItemDto, StoreChatHistoryDto, UpdateWorkItemDto } from '../../shared/dto/request-validation.dto';
 
 @Controller('storage')
 export class StorageController {
@@ -358,15 +358,13 @@ export class StorageController {
             const { fileId, lensAliasArn } = body;
             const email = this.getUserEmail(userDataHeader);
             const lensAlias = lensAliasArn?.split('/')?.pop();
-            
-            
-            console.log(`getWorkItem called: fileId=${fileId}, lensAlias=${lensAlias}, email=${email}`);
 
             if (!email) {
                 throw new HttpException('User not authenticated', HttpStatus.UNAUTHORIZED);
             }
 
             const userId = this.getUserId(email);
+            console.log(`getWorkItem called: fileId=${fileId}, lensAlias=${lensAlias}, userId=${userId}`); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring
             console.log(`Generated userId: ${userId}`);
 
             const workItem = await this.storageService.getWorkItem(userId, fileId);
@@ -609,7 +607,7 @@ export class StorageController {
     @Post('work-items/:fileId/update')
     async updateWorkItemData(
         @Param('fileId') fileId: string,
-        @Body() updates: any,
+        @Body() updates: UpdateWorkItemDto,
         @Headers('x-amzn-oidc-data') userDataHeader: string,
     ) {
         try {
@@ -619,7 +617,7 @@ export class StorageController {
             }
             const userId = this.getUserId(email);
 
-            const updatedWorkItem = await this.storageService.updateWorkItem(userId, fileId, updates);
+            const updatedWorkItem = await this.storageService.updateWorkItem(userId, fileId, updates as any);
             return { success: true, workItem: updatedWorkItem };
         } catch (error) {
             throw new HttpException(

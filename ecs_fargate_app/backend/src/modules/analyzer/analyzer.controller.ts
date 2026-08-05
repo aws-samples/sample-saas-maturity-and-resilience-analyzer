@@ -111,7 +111,7 @@ export class AnalyzerController {
     } catch (error) {
       this.logger.error('Analysis failed:', error);
       throw new HttpException(
-        `Failed to analyze template: ${error.message || error}`,
+        `Failed to analyze template. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -172,20 +172,24 @@ export class AnalyzerController {
   }
 
   @Post('cancel-iac-generation')
-  async cancelIaCGeneration() {
-    this.analyzerService.cancelIaCGeneration();
+  async cancelIaCGeneration(
+    @Body() body: { fileId: string },
+  ) {
+    this.analyzerService.cancelIaCGeneration(body.fileId);
     return { message: 'Generation cancelled successfully' };
   }
 
   @Post('cancel-analysis')
-  async cancelAnalysis() {
+  async cancelAnalysis(
+    @Body() body: { fileId: string },
+  ) {
     try {
-      this.analyzerService.cancelAnalysis();
+      this.analyzerService.cancelAnalysis(body.fileId);
       return { message: 'Analysis cancelled' };
     } catch (error) {
       this.logger.error('Failed to cancel analysis:', error);
       throw new HttpException(
-        `Failed to cancel analysis: ${error.message || error}`,
+        'Failed to cancel analysis',
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -215,7 +219,7 @@ export class AnalyzerController {
     } catch (error) {
       this.logger.error('Chat processing failed:', error);
       throw new HttpException(
-        `Failed to process chat message: ${error.message || error}`,
+        `Failed to process chat message. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

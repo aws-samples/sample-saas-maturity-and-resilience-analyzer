@@ -3,6 +3,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as bodyParser from 'body-parser';
 import { Request, Response, NextFunction } from 'express';
+import { AuthGuard } from './shared/guards/auth.guard';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -24,8 +26,12 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.FRONTEND_URL || 'http://localhost:8080',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-amzn-oidc-data'],
   });
+
+  // Apply auth guard globally — all endpoints require authentication
+  const configService = app.get(ConfigService);
+  app.useGlobalGuards(new AuthGuard(configService));
 
   app.useGlobalPipes(new ValidationPipe());
 

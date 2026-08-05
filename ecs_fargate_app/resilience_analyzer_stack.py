@@ -36,7 +36,7 @@ class ResilienceAnalyzerStack(Stack):
 
     def parse_auth_config(self, config: configparser.ConfigParser):
         auth_config = {
-            "enabled": config.getboolean("settings", "authentication", fallback=False),
+            "enabled": config.getboolean("settings", "authentication", fallback=True),
             "authType": config.get("settings", "auth_type", fallback="none"),
             "certificateArn": config.get("settings", "certificate_arn", fallback=""),
         }
@@ -158,6 +158,9 @@ class ResilienceAnalyzerStack(Stack):
             # OIDC configuration
 
             # Retrieve existing secret "WAIaCAnalyzerOIDCSecret" (See README for more details about creating this secret prior deployment)
+            # NOTE: For production deployments, configure a rotation schedule for this secret
+            # via the AWS Secrets Manager console or by adding a rotation Lambda.
+            # See: https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotating-secrets.html
             oidc_secret = aws_secretsmanager.Secret.from_secret_name_v2(
                 self, "OidcClientSecret", "WAIaCAnalyzerOIDCSecret"
             )
@@ -229,7 +232,6 @@ class ResilienceAnalyzerStack(Stack):
                     "ssm:DescribePatchBaselines",
                     "ssm:GetDocument",
                     "ssm:ListInstanceAssociations",
-                    "sts:AssumeRole",
                     "sts:GetCallerIdentity",
                     "tagging:GetResources",
                 ],
@@ -518,6 +520,7 @@ class ResilienceAnalyzerStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
             enforce_ssl=True,
+            encryption=s3.BucketEncryption.KMS_MANAGED,
             # CORS is configured after the ALB is created (see below)
             # to restrict allowed_origins to the deployed frontend domain.
         )
@@ -535,6 +538,7 @@ class ResilienceAnalyzerStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
             point_in_time_recovery=True,
+            encryption=dynamodb.TableEncryption.AWS_MANAGED,
         )
 
         # Create DynamoDB table for lens metadata
@@ -547,6 +551,7 @@ class ResilienceAnalyzerStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
             point_in_time_recovery=True,
+            encryption=dynamodb.TableEncryption.AWS_MANAGED,
         )
 
         # Create S3 bucket where well architected reference docs are stored

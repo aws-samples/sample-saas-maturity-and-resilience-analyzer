@@ -26,7 +26,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error('Failed to get lens metadata:', error);
       throw new HttpException(
-        `Failed to retrieve lens metadata: ${error.message || error}`,
+        `Failed to retrieve lens metadata. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -39,7 +39,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error(`Failed to get lens review for workload ${workloadId}:`, error);
       throw new HttpException(
-        `Failed to retrieve workload review: ${error.message || error}`,
+        `Failed to retrieve workload review. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -53,7 +53,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error(`Failed to get risk summary for workload ${body.workloadId}:`, error);
       throw new HttpException(
-        `Failed to retrieve risk summary: ${error.message || error}`,
+        `Failed to retrieve risk summary. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -69,7 +69,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error('Failed to create milestone:', error);
       throw new HttpException(
-        `Failed to create milestone: ${error.message || error}`,
+        `Failed to create milestone. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -92,7 +92,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error(`Failed to update answer for workload ${workloadId}, for question ${body.questionId}:`, error);
       throw new HttpException(
-        `Failed to update answer: ${error.message || error}`,
+        `Failed to update answer. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -109,7 +109,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error(`Failed to associate lens with workload ${workloadId}:`, error);
       throw new HttpException(
-        `Failed to associate lens with workload: ${error.message || error}`,
+        `Failed to associate lens with workload. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -122,7 +122,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error('Failed to create workload:', error);
       throw new HttpException(
-        `Failed to create workload: ${error.message || error}`,
+        `Failed to create workload. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -135,7 +135,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error(`Failed to delete workload ${workloadId}:`, error);
       throw new HttpException(
-        `Failed to delete workload: ${error.message || error}`,
+        `Failed to delete workload. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
@@ -148,7 +148,7 @@ export class WellArchitectedController {
     } catch (error) {
       this.logger.error('Failed to list workloads:', error);
       throw new HttpException(
-        `Failed to list workloads: ${error.message || error}`,
+        `Failed to list workloads. Please try again.`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }

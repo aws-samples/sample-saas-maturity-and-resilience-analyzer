@@ -143,3 +143,30 @@ export class GenerateSMAReportDto {
   @IsOptional()
   outputLanguage?: string;
 }
+
+
+export class UpdateWorkItemDto {
+  @IsString()
+  @IsOptional()
+  uploadMode?: string;
+
+  @IsArray()
+  @IsOptional()
+  usedLenses?: any[];
+
+  @IsString()
+  @IsOptional()
+  lastModified?: string;
+
+  @IsString()
+  @IsOptional()
+  fileType?: string;
+
+  @IsString()
+  @IsOptional()
+  fileName?: string;
+
+  // Sensitive fields explicitly excluded:
+  // - analysisStatus (managed by the analysis engine only)
+  // - workloadIds (managed by the analysis engine only)
+}

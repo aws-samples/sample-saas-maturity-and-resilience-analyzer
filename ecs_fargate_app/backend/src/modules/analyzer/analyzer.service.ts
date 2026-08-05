@@ -84,8 +84,8 @@ interface QuestionAnalysisTask {
 export class AnalyzerService {
     private readonly logger = new Logger(AnalyzerService.name);
     private cachedBestPractices: WellArchitectedBestPractice[] | null = null;
-    private cancelGeneration$ = new Subject<void>();
-    private cancelAnalysis$ = new Subject<void>();
+    private cancelGenerationMap = new Map<string, Subject<void>>();
+    private cancelAnalysisMap = new Map<string, Subject<void>>();
     private readonly storageEnabled: boolean;
     private readonly outputLanguage: string; // Add language setting
     private readonly BATCH_SIZE: number;
@@ -745,8 +745,25 @@ export class AnalyzerService {
         return fileType.startsWith('image/');
     }
 
-    cancelAnalysis() {
-        this.cancelAnalysis$.next();
+    cancelAnalysis(fileId?: string) {
+        if (fileId && this.cancelAnalysisMap.has(fileId)) {
+            this.cancelAnalysisMap.get(fileId).next();
+            this.cancelAnalysisMap.delete(fileId);
+        }
+    }
+
+    cancelIaCGeneration(fileId?: string) {
+        if (fileId && this.cancelGenerationMap.has(fileId)) {
+            this.cancelGenerationMap.get(fileId).next();
+            this.cancelGenerationMap.delete(fileId);
+        }
+    }
+
+    private getCancelSubject(fileId: string): Subject<void> {
+        if (!this.cancelAnalysisMap.has(fileId)) {
+            this.cancelAnalysisMap.set(fileId, new Subject<void>());
+        }
+        return this.cancelAnalysisMap.get(fileId);
     }
 
     async analyze(
@@ -873,9 +890,12 @@ export class AnalyzerService {
             // Calculate total questions
             const totalQuestions = domainQuestions.length;
 
-            // Create a Promise that resolves when cancelAnalysis$ emits
+            // Create a per-fileId cancel subject for scoped cancellation
+            const cancelSubject = this.getCancelSubject(fileId);
+
+            // Create a Promise that resolves when cancel is triggered for this fileId
             const cancelPromise = new Promise<boolean>((resolve) => {
-                const subscription = this.cancelAnalysis$.subscribe(() => {
+                const subscription = cancelSubject.subscribe(() => {
                     subscription.unsubscribe();
                     resolve(true);
                 });
@@ -953,7 +973,7 @@ export class AnalyzerService {
                         currentPillar: allTasks[batchStart].question.pillar,
                         currentQuestion: 'Analysis cancelled',
                         currentCategory: (allTasks[batchStart].question as any).category,
-                    });
+                    }, userId);
                     return { results, isCancelled: true, fileId: workItem?.fileId };
                 }
 
@@ -1129,10 +1149,6 @@ export class AnalyzerService {
             }
             throw error;
         }
-    }
-
-    cancelIaCGeneration() {
-        this.cancelGeneration$.next();
     }
 
     async generateIacDocument(
@@ -2566,9 +2582,15 @@ export class AnalyzerService {
             }
         }
 
-        // Create a Promise that resolves when cancelGeneration$ emits
+        // Create a cancel subject for generation cancellation
+        const genCancelKey = 'iac-generation';
+        if (!this.cancelGenerationMap.has(genCancelKey)) {
+            this.cancelGenerationMap.set(genCancelKey, new Subject<void>());
+        }
+        const genCancelSubject = this.cancelGenerationMap.get(genCancelKey);
+
         const cancelPromise = new Promise<void>((resolve) => {
-            const subscription = this.cancelGeneration$.subscribe(() => {
+            const subscription = genCancelSubject.subscribe(() => {
                 subscription.unsubscribe();
                 resolve();
             });

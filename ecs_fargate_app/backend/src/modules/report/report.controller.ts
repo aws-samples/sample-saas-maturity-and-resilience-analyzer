@@ -23,7 +23,7 @@ import {
       } catch (error) {
         this.logger.error('Failed to generate report:', error);
         throw new HttpException(
-          `Failed to generate report: ${error.message || error}`,
+          `Failed to generate report. Please try again.`,
           HttpStatus.INTERNAL_SERVER_ERROR
         );
       }
@@ -36,7 +36,7 @@ import {
       } catch (error) {
         this.logger.error('Failed to generate recommendations:', error);
         throw new HttpException(
-          `Failed to generate recommendations: ${error.message || error}`,
+          `Failed to generate recommendations. Please try again.`,
           HttpStatus.INTERNAL_SERVER_ERROR
         );
       }
@@ -49,7 +49,7 @@ import {
       } catch (error) {
         this.logger.error('Failed to generate SMA recommendations:', error);
         throw new HttpException(
-          `Failed to generate SMA recommendations: ${error.message || error}`,
+          `Failed to generate SMA recommendations. Please try again.`,
           HttpStatus.INTERNAL_SERVER_ERROR
         );
       }
@@ -67,7 +67,7 @@ import {
       } catch (error) {
         this.logger.error('Failed to generate SMA report:', error);
         throw new HttpException(
-          `Failed to generate SMA report: ${error.message || error}`,
+          `Failed to generate SMA report. Please try again.`,
           HttpStatus.INTERNAL_SERVER_ERROR
         );
       }

@@ -1,10 +1,12 @@
 import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: process.env.FRONTEND_URL || 'http://localhost:8080',
   },
   path: '/socket.io/', // Explicitly set the path
   pingInterval: 10000, // Send ping every 10 seconds
@@ -16,8 +18,17 @@ export class AnalyzerGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private readonly logger = new Logger(AnalyzerGateway.name);
 
+  constructor(private readonly configService: ConfigService) {}
+
   handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
+    // Extract userId from query params (passed by frontend on connect)
+    const userId = client.handshake?.query?.userId as string;
+    if (userId) {
+      client.join(`user:${userId}`);
+      this.logger.log(`Client ${client.id} joined room user:${userId}`);
+    } else {
+      this.logger.warn(`Client ${client.id} connected without userId`);
+    }
   }
 
   handleDisconnect(client: Socket) {
@@ -30,14 +41,23 @@ export class AnalyzerGateway implements OnGatewayConnection, OnGatewayDisconnect
     currentPillar: string;
     currentQuestion: string;
     currentCategory?: string;
-  }) {
-    this.server.emit('analysisProgress', data);
+  }, userId?: string) {
+    if (userId) {
+      this.server.to(`user:${userId}`).emit('analysisProgress', data);
+    } else {
+      // Fallback for non-authenticated mode
+      this.server.emit('analysisProgress', data);
+    }
   }
 
   emitImplementationProgress(data: {
     status: string;
     progress: number;
-  }) {
-    this.server.emit('implementationProgress', data);
+  }, userId?: string) {
+    if (userId) {
+      this.server.to(`user:${userId}`).emit('implementationProgress', data);
+    } else {
+      this.server.emit('implementationProgress', data);
+    }
   }
 }
