@@ -843,6 +843,11 @@ Where `<container_tool>` is either `docker` or `finch`.
 - Local development uses `finch-compose.dev.yaml` for container configuration
 - Production deployment continues to use CDK as described in the Installation and Deployment section
 
+## Authors
+
+- Ahmed Gamaleldin ([@gamaleld](https://github.com/gamaleld))
+- Jayakrishnan Vazhayil ([@jaykayv-aws](https://github.com/jaykayv-aws))
+
 ## Contributing
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
