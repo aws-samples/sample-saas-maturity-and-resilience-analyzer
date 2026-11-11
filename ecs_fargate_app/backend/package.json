@@ -17,11 +17,11 @@
     "start:finch": "finch run --rm -p 3000:3000 backend"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agent-runtime": "^3.840.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.842.0",
-    "@aws-sdk/client-dynamodb": "^3.840.0",
-    "@aws-sdk/client-s3": "^3.842.0",
-    "@aws-sdk/client-wellarchitected": "^3.840.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.1166.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1166.0",
+    "@aws-sdk/client-dynamodb": "^3.1166.0",
+    "@aws-sdk/client-s3": "^3.1166.0",
+    "@aws-sdk/client-wellarchitected": "^3.1166.0",
     "@aws-sdk/lib-storage": "^3.842.0",
     "@aws-sdk/util-dynamodb": "^3.840.0",
     "@nestjs/common": "^11.0.16",
